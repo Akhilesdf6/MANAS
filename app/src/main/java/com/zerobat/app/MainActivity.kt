@@ -36,13 +36,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
-private val Purple = Color(0xFFA78BFA)
-private val Dark = Color(0xFF12101D)
-private val Panel = Color(0xFF242034)
-private val Muted = Color(0xFFC5BED6)
+private val Purple = Color(0xFF42CDB9)
+private val Dark = Color(0xFF071B33)
+private val Panel = Color(0xFF102C43)
+private val Muted = Color(0xFFD0DEE4)
 private const val UPDATE_JSON = "https://akhilesdf6.github.io/zerobat-download/version.json"
 private data class UpdateInfo(val code: Int, val version: String, val url: String)
-private suspend fun checkUpdate(): UpdateInfo? = withContext(Dispatchers.IO) {
+private suspend fun checkUpdate(context: Context): UpdateInfo? = withContext(Dispatchers.IO) {
     try {
         val connection = URL(UPDATE_JSON).openConnection()
         connection.connectTimeout = 8000
@@ -50,8 +50,8 @@ private suspend fun checkUpdate(): UpdateInfo? = withContext(Dispatchers.IO) {
         val json = connection.getInputStream().bufferedReader().use { JSONObject(it.readText()) }
         val code = json.getInt("versionCode")
         val version = json.getString("versionName")
-        val url = json.getString("apkUrl")
-        if (code > 4 && url.startsWith("https://github.com/Akhilesdf6/zerobat-download/releases/download/"))
+        val url = json.optString("downloadUrl").ifBlank { json.optString("apkUrl") }
+        if (code > context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode && url.startsWith("https://github.com/Akhilesdf6/zerobat-download/releases/download/"))
             UpdateInfo(code, version, url) else null
     } catch (_: Exception) { null }
 }
@@ -66,7 +66,7 @@ private fun UpdatePanel(malayalam: Boolean) {
     var message by remember { mutableStateOf("") }
     LaunchedEffect(checking) {
         if (checking) {
-            info = checkUpdate()
+            info = checkUpdate(context)
             checked = true
             checking = false
         }
@@ -172,7 +172,7 @@ private fun MeditationApp(context: Context) {
     MaterialTheme(colorScheme = darkColorScheme(primary = Purple, background = Dark, surface = Panel)) {
         Column(Modifier.fillMaxSize().background(Dark).windowInsetsPadding(WindowInsets.safeDrawing).padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("🧘 ZeroBat", color = Purple, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                Text("🌿 ZeroBat", color = Purple, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                 TextButton(onClick = {
                     malayalam = !malayalam
                     prefs.edit().putBoolean("malayalam", malayalam).apply()
@@ -190,9 +190,25 @@ private fun MeditationApp(context: Context) {
                             Column(Modifier.fillMaxWidth().padding(20.dp)) {
                                 Text(t("മെഡിറ്റേഷൻ സമയം", "Meditation duration"), color = Color.White, fontSize = 18.sp)
                                 Spacer(Modifier.height(12.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                    listOf(3, 5, 10, 15).forEach { n ->
-                                        FilterChip(selected = duration == n, onClick = { duration = n }, label = { Text("$n min") })
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf(listOf(3, 5), listOf(10, 15)).forEach { pair ->
+                                        Row(
+                                            Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            pair.forEach { n ->
+                                                FilterChip(
+                                                    selected = duration == n,
+                                                    onClick = { duration = n },
+                                                    label = { Text("$n min", maxLines = 1) },
+                                                    modifier = Modifier.weight(1f),
+                                                    colors = FilterChipDefaults.filterChipColors(
+                                                        selectedContainerColor = Purple,
+                                                        selectedLabelColor = Dark
+                                                    )
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                                 Spacer(Modifier.height(14.dp))
