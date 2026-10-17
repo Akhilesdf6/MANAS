@@ -1,6 +1,15 @@
 package com.zerobat.app
 
 import android.content.Context
+import android.app.DownloadManager
+import android.content.Intent
+import android.net.Uri
+import android.os.Environment
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.URL
 import android.os.Bundle
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
@@ -31,6 +40,92 @@ private val Purple = Color(0xFFA78BFA)
 private val Dark = Color(0xFF12101D)
 private val Panel = Color(0xFF242034)
 private val Muted = Color(0xFFC5BED6)
+private const val UPDATE_JSON = "https://akhilesdf6.github.io/zerobat-download/version.json"
+private data class UpdateInfo(val code: Int, val version: String, val url: String)
+private suspend fun checkUpdate(): UpdateInfo? = withContext(Dispatchers.IO) {
+    try {
+        val connection = URL(UPDATE_JSON).openConnection()
+        connection.connectTimeout = 8000
+        connection.readTimeout = 8000
+        val json = connection.getInputStream().bufferedReader().use { JSONObject(it.readText()) }
+        val code = json.getInt("versionCode")
+        val version = json.getString("versionName")
+        val url = json.getString("apkUrl")
+        if (code > 4 && url.startsWith("https://github.com/Akhilesdf6/zerobat-download/releases/download/"))
+            UpdateInfo(code, version, url) else null
+    } catch (_: Exception) { null }
+}
+
+@Composable
+private fun UpdatePanel(malayalam: Boolean) {
+    val context = LocalContext.current
+    var checking by remember { mutableStateOf(false) }
+    var info by remember { mutableStateOf<UpdateInfo?>(null) }
+    var checked by remember { mutableStateOf(false) }
+    var downloadId by remember { mutableLongStateOf(-1L) }
+    var message by remember { mutableStateOf("") }
+    LaunchedEffect(checking) {
+        if (checking) {
+            info = checkUpdate()
+            checked = true
+            checking = false
+        }
+    }
+    LaunchedEffect(downloadId) {
+        if (downloadId < 0) return@LaunchedEffect
+        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        while (true) {
+            delay(1000)
+            val query = DownloadManager.Query().setFilterById(downloadId)
+            val cursor = manager.query(query)
+            val status = cursor.use {
+                if (it != null && it.moveToFirst()) it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) else -1
+            }
+            if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                val uri = manager.getUriForDownloadedFile(downloadId)
+                if (uri != null) {
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, "application/vnd.android.package-archive")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    try { context.startActivity(intent) } catch (_: Exception) {
+                        message = if (malayalam) "APK Downloads-ൽ ഉണ്ട്. തുറന്ന് install ചെയ്യുക." else "APK downloaded. Open it from Downloads to install."
+                    }
+                }
+                downloadId = -1L
+                break
+            }
+            if (status == DownloadManager.STATUS_FAILED || status == -1) {
+                message = if (malayalam) "Download പരാജയപ്പെട്ടു." else "Download failed."
+                downloadId = -1L
+                break
+            }
+        }
+    }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        OutlinedButton(onClick = { checking = true; checked = false }, enabled = !checking && downloadId < 0) {
+            Text(if (checking) "Checking..." else if (malayalam) "🔄 അപ്ഡേറ്റ് പരിശോധിക്കുക" else "🔄 Check for updates")
+        }
+        if (checked && info == null) Text(if (malayalam) "പുതിയ അപ്ഡേറ്റ് കണ്ടെത്തിയില്ല (അല്ലെങ്കിൽ നെറ്റ്‌വർക്ക് ലഭ്യമല്ല)." else "No update found (or network unavailable).", color = Muted, fontSize = 12.sp)
+        info?.let { update ->
+            Text("Update ${update.version} available", color = Purple)
+            Button(onClick = {
+                try {
+                    val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                    val request = DownloadManager.Request(Uri.parse(update.url))
+                        .setTitle("ZeroBat ${update.version}")
+                        .setDescription("ZeroBat meditation update")
+                        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                        .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, "ZeroBat-${update.version}.apk")
+                    downloadId = manager.enqueue(request)
+                    message = if (malayalam) "APK ഡൗൺലോഡ് ചെയ്യുന്നു..." else "Downloading APK..."
+                } catch (_: Exception) { message = if (malayalam) "Download ആരംഭിക്കാനായില്ല." else "Could not start download." }
+            }, enabled = downloadId < 0) { Text(if (malayalam) "⬇ അപ്ഡേറ്റ് ഡൗൺലോഡ്" else "⬇ Download update") }
+        }
+        if (message.isNotEmpty()) Text(message, color = Muted, fontSize = 12.sp)
+    }
+}
+
 private enum class Page { HOME, SESSION, BREATH, PROGRESS }
 
 class MainActivity : ComponentActivity() {
@@ -115,6 +210,9 @@ private fun MeditationApp(context: Context) {
                         Spacer(Modifier.height(12.dp))
                         OutlinedButton(onClick = { page = Page.PROGRESS }, modifier = Modifier.fillMaxWidth()) { Text(t("📊 എന്റെ പുരോഗതി", "📊 My progress")) }
                         Spacer(Modifier.height(20.dp))
+                        Spacer(Modifier.height(12.dp))
+                        UpdatePanel(malayalam)
+                        Spacer(Modifier.height(12.dp))
                         Text(t("തുടക്കക്കാർക്കായി • ഓഫ്‌ലൈൻ", "For beginners • Works offline"), color = Muted, fontSize = 13.sp)
                     }
                     Page.SESSION -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
