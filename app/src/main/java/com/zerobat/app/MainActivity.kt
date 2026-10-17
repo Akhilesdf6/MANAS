@@ -4,225 +4,188 @@ import android.content.Context
 import android.os.Bundle
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 private val Purple = Color(0xFFA78BFA)
-private val Dark = Color(0xFF100F18)
-private val Panel = Color(0xFF1C1A29)
-private val Muted = Color(0xFFBDB8CC)
-private const val DEFAULT_PIN = "1234"
+private val Dark = Color(0xFF12101D)
+private val Panel = Color(0xFF242034)
+private val Muted = Color(0xFFC5BED6)
+private enum class Page { HOME, SESSION, BREATH, PROGRESS }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { ZeroBatApp(applicationContext) }
+        setContent { MeditationApp(applicationContext) }
     }
 }
 
-private enum class Screen { SETUP, BREAK, COMPLETE }
-
 @Composable
-private fun ZeroBatApp(context: Context) {
-    val prefs = remember { context.getSharedPreferences("zerobat_settings", Context.MODE_PRIVATE) }
-    var minutes by remember { mutableIntStateOf(5) }
-    var custom by remember { mutableStateOf("20") }
-    var screen by remember { mutableStateOf(Screen.SETUP) }
-    var remaining by remember { mutableLongStateOf(0L) }
+private fun MeditationApp(context: Context) {
+    val prefs = remember { context.getSharedPreferences("meditation", Context.MODE_PRIVATE) }
+    var malayalam by remember { mutableStateOf(prefs.getBoolean("malayalam", true)) }
+    var page by remember { mutableStateOf(Page.HOME) }
+    var duration by remember { mutableIntStateOf(5) }
+    var remaining by remember { mutableLongStateOf(300L) }
     var deadline by remember { mutableLongStateOf(0L) }
-    var paused by remember { mutableStateOf(false) }
-    var settings by remember { mutableStateOf(false) }
-    var changePin by remember { mutableStateOf(false) }
-    var pin by remember { mutableStateOf(prefs.getString("parent_pin", DEFAULT_PIN) ?: DEFAULT_PIN) }
-    var oldPin by remember { mutableStateOf("") }
-    var newPin by remember { mutableStateOf("") }
-    var pinError by remember { mutableStateOf(false) }
-    var endConfirm by remember { mutableStateOf(false) }
+    var running by remember { mutableStateOf(false) }
+    var completed by remember { mutableStateOf(false) }
+    var sessions by remember { mutableIntStateOf(prefs.getInt("sessions", 0)) }
+    var totalMinutes by remember { mutableIntStateOf(prefs.getInt("minutes", 0)) }
+    fun t(ml: String, en: String) = if (malayalam) ml else en
+    fun stopSession() { running = false; completed = false; page = Page.HOME }
+    BackHandler(enabled = page != Page.HOME) { if (page == Page.SESSION) stopSession() else page = Page.HOME }
 
-    LaunchedEffect(screen, paused, deadline) {
-        if (screen == Screen.BREAK && !paused) {
-            while (true) {
+    LaunchedEffect(page, running, deadline) {
+        if (page == Page.SESSION && running) {
+            while (running && page == Page.SESSION) {
                 val ms = (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
-                remaining = (ms + 999L) / 1000L
-                if (ms == 0L) {
-                    screen = Screen.COMPLETE
+                remaining = (ms + 999) / 1000
+                if (ms <= 0) {
+                    running = false
+                    completed = true
+                    sessions += 1
+                    totalMinutes += duration
+                    prefs.edit().putInt("sessions", sessions).putInt("minutes", totalMinutes).apply()
                     break
                 }
-                delay(200L)
+                delay(200)
             }
         }
     }
-
-    BackHandler(enabled = screen == Screen.BREAK) { endConfirm = true }
-    BackHandler(enabled = screen == Screen.COMPLETE) { screen = Screen.SETUP }
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Purple, background = Dark, surface = Panel)) {
-        Surface(Modifier.fillMaxSize(), color = Dark) {
-            when (screen) {
-                Screen.SETUP -> SetupScreen(minutes, { minutes = it }, custom, { custom = it }, {
-                    val duration = if (minutes == -1) (custom.toIntOrNull() ?: 1).coerceIn(1, 180) else minutes
-                    remaining = duration * 60L
-                    deadline = SystemClock.elapsedRealtime() + remaining * 1000L
-                    paused = false
-                    screen = Screen.BREAK
-                }, { settings = true })
-                Screen.BREAK -> BreakScreen(remaining, paused, onPauseResume = {
-                    if (paused) {
-                        deadline = SystemClock.elapsedRealtime() + remaining * 1000L
-                        paused = false
-                    } else {
-                        remaining = ((deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0L) + 999L) / 1000L
-                        paused = true
+        Column(Modifier.fillMaxSize().background(Dark).windowInsetsPadding(WindowInsets.safeDrawing).padding(16.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("🧘 ZeroBat", color = Purple, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                TextButton(onClick = {
+                    malayalam = !malayalam
+                    prefs.edit().putBoolean("malayalam", malayalam).apply()
+                }) { Text(if (malayalam) "English" else "മലയാളം") }
+            }
+            Spacer(Modifier.height(12.dp))
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when (page) {
+                    Page.HOME -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(t("ശാന്തതയിലേക്ക് സ്വാഗതം", "Welcome to your calm"), fontSize = 25.sp, color = Color.White, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(10.dp))
+                        Text(t("ചെറിയൊരു ഇടവേള. മനസ്സിന് ആശ്വാസം.", "A gentle moment for yourself."), color = Muted)
+                        Spacer(Modifier.height(30.dp))
+                        Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(22.dp)) {
+                            Column(Modifier.fillMaxWidth().padding(20.dp)) {
+                                Text(t("മെഡിറ്റേഷൻ സമയം", "Meditation duration"), color = Color.White, fontSize = 18.sp)
+                                Spacer(Modifier.height(12.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                    listOf(3, 5, 10, 15).forEach { n ->
+                                        FilterChip(selected = duration == n, onClick = { duration = n }, label = { Text("$n min") })
+                                    }
+                                }
+                                Spacer(Modifier.height(14.dp))
+                                Button(onClick = {
+                                    remaining = duration * 60L
+                                    deadline = SystemClock.elapsedRealtime() + remaining * 1000
+                                    completed = false
+                                    running = true
+                                    page = Page.SESSION
+                                }, modifier = Modifier.fillMaxWidth()) { Text(t("മെഡിറ്റേഷൻ തുടങ്ങാം", "Start meditation")) }
+                            }
+                        }
+                        Spacer(Modifier.height(18.dp))
+                        OutlinedButton(onClick = { page = Page.BREATH }, modifier = Modifier.fillMaxWidth()) { Text(t("🌬️ ശ്വസന പരിശീലനം", "🌬️ Breathing exercise")) }
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedButton(onClick = { page = Page.PROGRESS }, modifier = Modifier.fillMaxWidth()) { Text(t("📊 എന്റെ പുരോഗതി", "📊 My progress")) }
+                        Spacer(Modifier.height(20.dp))
+                        Text(t("തുടക്കക്കാർക്കായി • ഓഫ്‌ലൈൻ", "For beginners • Works offline"), color = Muted, fontSize = 13.sp)
                     }
-                }, onEnd = { endConfirm = true })
-                Screen.COMPLETE -> CompleteScreen { screen = Screen.SETUP }
+                    Page.SESSION -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Text(if (completed) t("പൂർത്തിയായി! ✨", "Session complete! ✨") else t("ശ്വാസത്തിൽ ശ്രദ്ധിക്കുക", "Focus on your breath"), color = Purple, fontSize = 24.sp, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(28.dp))
+                        Text("%02d:%02d".format(remaining / 60, remaining % 60), color = Color.White, fontSize = 64.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(16.dp))
+                        Text(t("സുഖമായി ഇരിക്കുക. പതുക്കെ ശ്വസിക്കുക.", "Sit comfortably. Breathe gently."), color = Muted, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(30.dp))
+                        if (!completed) Button(onClick = {
+                            if (running) {
+                                remaining = ((deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0L) + 999) / 1000
+                                running = false
+                            } else {
+                                deadline = SystemClock.elapsedRealtime() + remaining * 1000
+                                running = true
+                            }
+                        }) { Text(if (running) t("താൽക്കാലികമായി നിർത്തുക", "Pause") else t("തുടരുക", "Resume")) }
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedButton(onClick = { stopSession() }) { Text(t("അവസാനിപ്പിക്കുക", "Finish / Exit")) }
+                    }
+                    Page.BREATH -> BreathingScreen(malayalam)
+                    Page.PROGRESS -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Text(t("എന്റെ പുരോഗതി", "My progress"), color = Purple, fontSize = 27.sp)
+                        Spacer(Modifier.height(24.dp))
+                        Text(t("പൂർത്തിയാക്കിയ സെഷനുകൾ: $sessions", "Completed sessions: $sessions"), color = Color.White, fontSize = 20.sp)
+                        Spacer(Modifier.height(12.dp))
+                        Text(t("ആകെ മിനിറ്റുകൾ: $totalMinutes", "Total minutes: $totalMinutes"), color = Color.White, fontSize = 20.sp)
+                        Spacer(Modifier.height(14.dp))
+                        Text(t("പൂർത്തിയായ സെഷനുകൾ മാത്രം രേഖപ്പെടുത്തുന്നു.", "Only completed sessions are counted."), color = Muted, fontSize = 13.sp)
+                    }
+                }
+            }
+            if (page != Page.HOME) {
+                TextButton(onClick = { if (page == Page.SESSION) stopSession() else page = Page.HOME }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                    Text(t("← ഹോം", "← Home"))
+                }
             }
         }
-
-        if (endConfirm) AlertDialog(
-            onDismissRequest = { endConfirm = false },
-            title = { Text("End break?") },
-            text = { Text("Your break will stop. You can start another one whenever you want.") },
-            confirmButton = { TextButton(onClick = { endConfirm = false; screen = Screen.SETUP }) { Text("End break") } },
-            dismissButton = { TextButton(onClick = { endConfirm = false }) { Text("Continue") } }
-        )
-        if (settings) AlertDialog(
-            onDismissRequest = { settings = false },
-            title = { Text("Parent settings") },
-            text = { Column {
-                Text("PIN protects settings only. Anyone can end a break for safety.")
-                Spacer(Modifier.height(12.dp))
-                OutlinedButton(onClick = { settings = false; changePin = true; oldPin = ""; newPin = ""; pinError = false }) {
-                    Text("Change parent PIN")
-                }
-            } },
-            confirmButton = { TextButton(onClick = { settings = false }) { Text("Done") } }
-        )
-        if (changePin) AlertDialog(
-            onDismissRequest = { changePin = false },
-            title = { Text("Change parent PIN") },
-            text = { Column {
-                Text("Enter the current PIN, then a new 4–8 digit PIN.")
-                OutlinedTextField(oldPin, { if (it.length <= 8 && it.all(Char::isDigit)) oldPin = it },
-                    label = { Text("Current PIN") }, singleLine = true, isError = pinError,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    visualTransformation = PasswordVisualTransformation())
-                OutlinedTextField(newPin, { if (it.length <= 8 && it.all(Char::isDigit)) newPin = it },
-                    label = { Text("New PIN") }, singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    visualTransformation = PasswordVisualTransformation())
-                if (pinError) Text("Check the current PIN and new PIN length.", color = MaterialTheme.colorScheme.error)
-            } },
-            confirmButton = { TextButton(onClick = {
-                if (oldPin == pin && newPin.length in 4..8) {
-                    pin = newPin
-                    prefs.edit().putString("parent_pin", pin).apply()
-                    changePin = false
-                } else pinError = true
-            }) { Text("Save") } },
-            dismissButton = { TextButton(onClick = { changePin = false }) { Text("Cancel") } }
-        )
     }
 }
 
 @Composable
-private fun SetupScreen(minutes: Int, setMinutes: (Int) -> Unit, custom: String,
-    setCustom: (String) -> Unit, onStart: () -> Unit, onSettings: () -> Unit) {
-    Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState())
-        .padding(horizontal = 24.dp, vertical = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("🌙 ZeroBat", fontSize = 36.sp, fontWeight = FontWeight.ExtraBold, color = Purple)
-        Spacer(Modifier.height(8.dp))
-        Text("Take a mindful screen break", fontSize = 17.sp, color = Color.White)
+private fun BreathingScreen(malayalam: Boolean) {
+    var active by remember { mutableStateOf(true) }
+    var seconds by remember { mutableIntStateOf(0) }
+    LaunchedEffect(active) {
+        while (active) { delay(1000); seconds += 1 }
+    }
+    val inhale = seconds % 8 < 4
+    val transition = rememberInfiniteTransition(label = "breathing")
+    val size by transition.animateFloat(
+        initialValue = 0.60f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(4000), repeatMode = RepeatMode.Reverse),
+        label = "breathCircle"
+    )
+    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Text(if (malayalam) "ശ്വസന പരിശീലനം" else "Breathing exercise", color = Purple, fontSize = 25.sp)
+        Spacer(Modifier.height(25.dp))
+        Box(Modifier.size(230.dp), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.fillMaxSize()) {
+                drawCircle(color = Purple.copy(alpha = 0.15f), radius = this.size.minDimension / 2)
+                drawCircle(color = Purple, radius = this.size.minDimension * (if (active) size else 0.60f) / 2)
+            }
+            Text(if (!active) (if (malayalam) "നിർത്തി" else "Paused") else if (inhale) (if (malayalam) "ശ്വാസം എടുക്കുക" else "Inhale") else (if (malayalam) "ശ്വാസം വിടുക" else "Exhale"), color = Dark, fontWeight = FontWeight.Bold)
+        }
         Spacer(Modifier.height(24.dp))
-        Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(24.dp)) {
-            Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                Text("Choose break duration", color = Muted)
-                listOf(1, 5, 10, 15, 30).forEach { n ->
-                    Row(Modifier.fillMaxWidth().clickable { setMinutes(n) }.padding(vertical = 1.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(minutes == n, { setMinutes(n) })
-                        Text("$n minute${if (n == 1) "" else "s"}", color = Color.White)
-                    }
-                }
-                Row(Modifier.fillMaxWidth().clickable { setMinutes(-1) }, verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(minutes == -1, { setMinutes(-1) })
-                    Text("Custom (1–180 min)", color = Color.White)
-                }
-                if (minutes == -1) OutlinedTextField(custom,
-                    { if (it.length <= 3 && it.all(Char::isDigit)) setCustom(it) },
-                    label = { Text("Minutes") }, singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth())
-            }
-        }
-        Spacer(Modifier.height(18.dp))
-        Button(onClick = onStart, enabled = minutes != -1 || (custom.toIntOrNull() ?: 0) in 1..180,
-            modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(18.dp)) {
-            Text("START BREAK", fontWeight = FontWeight.Bold)
-        }
+        Text(if (malayalam) "4 സെക്കൻഡ് ശ്വാസം എടുക്കുക, 4 സെക്കൻഡ് വിടുക." else "Inhale for 4 seconds, exhale for 4 seconds.", color = Muted, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(22.dp))
+        Button(onClick = { active = !active }) { Text(if (active) (if (malayalam) "നിർത്തുക" else "Pause") else (if (malayalam) "തുടരുക" else "Resume")) }
         Spacer(Modifier.height(10.dp))
-        OutlinedButton(onClick = onSettings, modifier = Modifier.fillMaxWidth()) { Text("Parent settings / PIN") }
-        Spacer(Modifier.height(14.dp))
-        Text("Break mode is voluntary. Android Home and emergency functions remain available.",
-            color = Muted, fontSize = 12.sp, textAlign = TextAlign.Center)
-    }
-}
-
-@Composable
-private fun BreakScreen(remaining: Long, paused: Boolean, onPauseResume: () -> Unit, onEnd: () -> Unit) {
-    Column(Modifier.fillMaxSize().background(Dark).safeDrawingPadding().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Text("🌿", fontSize = 64.sp)
-        Spacer(Modifier.height(20.dp))
-        Text(if (paused) "Break paused" else "Take a break", color = Color.White,
-            fontSize = 30.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        Text("Rest your eyes. Breathe. Recharge.", color = Muted, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(32.dp))
-        Text("%02d:%02d".format(remaining / 60, remaining % 60), fontSize = 64.sp,
-            color = Purple, fontWeight = FontWeight.Bold)
-        Text("Time remaining", color = Muted)
-        Spacer(Modifier.height(32.dp))
-        Button(onClick = onPauseResume, modifier = Modifier.fillMaxWidth().height(54.dp)) {
-            Text(if (paused) "RESUME BREAK" else "PAUSE BREAK")
-        }
-        Spacer(Modifier.height(12.dp))
-        OutlinedButton(onClick = onEnd, modifier = Modifier.fillMaxWidth().height(54.dp)) { Text("END BREAK") }
-        Spacer(Modifier.height(20.dp))
-        Text("You can end this break at any time.", color = Muted, fontSize = 12.sp)
-    }
-}
-
-@Composable
-private fun CompleteScreen(onDone: () -> Unit) {
-    Column(Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Text("✨", fontSize = 64.sp)
-        Spacer(Modifier.height(18.dp))
-        Text("Break complete!", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(12.dp))
-        Text("Nice work taking time away from your screen.", color = Muted, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(32.dp))
-        Button(onClick = onDone, modifier = Modifier.fillMaxWidth().height(54.dp)) { Text("DONE") }
+        Text(if (malayalam) "അസൗകര്യം തോന്നിയാൽ സാധാരണ രീതിയിൽ ശ്വസിക്കുക." else "Breathe normally if you feel uncomfortable.", color = Muted, fontSize = 12.sp, textAlign = TextAlign.Center)
     }
 }
