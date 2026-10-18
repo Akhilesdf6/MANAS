@@ -1,0 +1,355 @@
+package com.zerobat.app
+
+import android.content.Context
+import android.app.DownloadManager
+import android.content.Intent
+import android.net.Uri
+import android.os.Environment
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.URL
+import android.os.Bundle
+import android.os.SystemClock
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+
+private val Purple = Color(0xFF42CDB9)
+private val Dark = Color(0xFF071B33)
+private val Panel = Color(0xFF102C43)
+private val Muted = Color(0xFFD0DEE4)
+private const val UPDATE_JSON = "https://akhilesdf6.github.io/zerobat-download/version.json"
+private data class UpdateInfo(val code: Int, val version: String, val url: String)
+private suspend fun checkUpdate(context: Context): UpdateInfo? = withContext(Dispatchers.IO) {
+    try {
+        val connection = URL(UPDATE_JSON).openConnection()
+        connection.connectTimeout = 8000
+        connection.readTimeout = 8000
+        val json = connection.getInputStream().bufferedReader().use { JSONObject(it.readText()) }
+        val code = json.getInt("versionCode")
+        val version = json.getString("versionName")
+        val url = json.optString("downloadUrl").ifBlank { json.optString("apkUrl") }
+        if (code > context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode && url.startsWith("https://github.com/Akhilesdf6/zerobat-download/releases/download/"))
+            UpdateInfo(code, version, url) else null
+    } catch (_: Exception) { null }
+}
+
+@Composable
+private fun UpdatePanel(malayalam: Boolean) {
+    val context = LocalContext.current
+    var checking by remember { mutableStateOf(false) }
+    var info by remember { mutableStateOf<UpdateInfo?>(null) }
+    var checked by remember { mutableStateOf(false) }
+    var downloadId by remember { mutableLongStateOf(-1L) }
+    var message by remember { mutableStateOf("") }
+    LaunchedEffect(checking) {
+        if (checking) {
+            info = checkUpdate(context)
+            checked = true
+            checking = false
+        }
+    }
+    LaunchedEffect(downloadId) {
+        if (downloadId < 0) return@LaunchedEffect
+        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        while (true) {
+            delay(1000)
+            val query = DownloadManager.Query().setFilterById(downloadId)
+            val cursor = manager.query(query)
+            val status = cursor.use {
+                if (it != null && it.moveToFirst()) it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) else -1
+            }
+            if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                val uri = manager.getUriForDownloadedFile(downloadId)
+                if (uri != null) {
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, "application/vnd.android.package-archive")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    try { context.startActivity(intent) } catch (_: Exception) {
+                        message = if (malayalam) "APK Downloads-ൽ ഉണ്ട്. തുറന്ന് install ചെയ്യുക." else "APK downloaded. Open it from Downloads to install."
+                    }
+                }
+                downloadId = -1L
+                break
+            }
+            if (status == DownloadManager.STATUS_FAILED || status == -1) {
+                message = if (malayalam) "Download പരാജയപ്പെട്ടു." else "Download failed."
+                downloadId = -1L
+                break
+            }
+        }
+    }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        OutlinedButton(onClick = { checking = true; checked = false }, enabled = !checking && downloadId < 0) {
+            Text(if (checking) "Checking..." else if (malayalam) "🔄 അപ്ഡേറ്റ് പരിശോധിക്കുക" else "🔄 Check for updates")
+        }
+        if (checked && info == null) Text(if (malayalam) "പുതിയ അപ്ഡേറ്റ് കണ്ടെത്തിയില്ല (അല്ലെങ്കിൽ നെറ്റ്‌വർക്ക് ലഭ്യമല്ല)." else "No update found (or network unavailable).", color = Muted, fontSize = 12.sp)
+        info?.let { update ->
+            Text("Update ${update.version} available", color = Purple)
+            Button(onClick = {
+                try {
+                    val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                    val request = DownloadManager.Request(Uri.parse(update.url))
+                        .setTitle("ZeroBat ${update.version}")
+                        .setDescription("ZeroBat meditation update")
+                        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                        .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, "ZeroBat-${update.version}.apk")
+                    downloadId = manager.enqueue(request)
+                    message = if (malayalam) "APK ഡൗൺലോഡ് ചെയ്യുന്നു..." else "Downloading APK..."
+                } catch (_: Exception) { message = if (malayalam) "Download ആരംഭിക്കാനായില്ല." else "Could not start download." }
+            }, enabled = downloadId < 0) { Text(if (malayalam) "⬇ അപ്ഡേറ്റ് ഡൗൺലോഡ്" else "⬇ Download update") }
+        }
+        if (message.isNotEmpty()) Text(message, color = Muted, fontSize = 12.sp)
+    }
+}
+
+private enum class Page { HOME, SESSION, BREATH, PROGRESS, PREMIUM }
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent { MeditationApp(applicationContext) }
+    }
+}
+
+@Composable
+private fun MeditationApp(context: Context) {
+    val prefs = remember { context.getSharedPreferences("meditation", Context.MODE_PRIVATE) }
+    var malayalam by remember { mutableStateOf(prefs.getBoolean("malayalam", true)) }
+    var page by remember { mutableStateOf(Page.HOME) }
+    var duration by remember { mutableIntStateOf(5) }
+    var remaining by remember { mutableLongStateOf(300L) }
+    var deadline by remember { mutableLongStateOf(0L) }
+    var running by remember { mutableStateOf(false) }
+    var completed by remember { mutableStateOf(false) }
+    var sessions by remember { mutableIntStateOf(prefs.getInt("sessions", 0)) }
+    var totalMinutes by remember { mutableIntStateOf(prefs.getInt("minutes", 0)) }
+    fun t(ml: String, en: String) = if (malayalam) ml else en
+    fun stopSession() { running = false; completed = false; page = Page.HOME }
+    BackHandler(enabled = page != Page.HOME) { if (page == Page.SESSION) stopSession() else page = Page.HOME }
+
+    LaunchedEffect(page, running, deadline) {
+        if (page == Page.SESSION && running) {
+            while (running && page == Page.SESSION) {
+                val ms = (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+                remaining = (ms + 999) / 1000
+                if (ms <= 0) {
+                    running = false
+                    completed = true
+                    sessions += 1
+                    totalMinutes += duration
+                    prefs.edit().putInt("sessions", sessions).putInt("minutes", totalMinutes).apply()
+                    break
+                }
+                delay(200)
+            }
+        }
+    }
+
+    MaterialTheme(colorScheme = darkColorScheme(primary = Purple, background = Dark, surface = Panel)) {
+        Column(Modifier.fillMaxSize().background(Dark).windowInsetsPadding(WindowInsets.safeDrawing).padding(16.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("🌿 ZeroBat", color = Purple, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                TextButton(onClick = {
+                    malayalam = !malayalam
+                    prefs.edit().putBoolean("malayalam", malayalam).apply()
+                }) { Text(if (malayalam) "English" else "മലയാളം") }
+            }
+            Spacer(Modifier.height(12.dp))
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when (page) {
+                    Page.HOME -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(t("ശാന്തതയിലേക്ക് സ്വാഗതം", "Welcome to your calm"), fontSize = 25.sp, color = Color.White, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(10.dp))
+                        Text(t("ചെറിയൊരു ഇടവേള. മനസ്സിന് ആശ്വാസം.", "A gentle moment for yourself."), color = Muted)
+                        Spacer(Modifier.height(30.dp))
+                        Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(22.dp)) {
+                            Column(Modifier.fillMaxWidth().padding(20.dp)) {
+                                Text(t("മെഡിറ്റേഷൻ സമയം", "Meditation duration"), color = Color.White, fontSize = 18.sp)
+                                Spacer(Modifier.height(12.dp))
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf(listOf(3, 5), listOf(10, 15)).forEach { pair ->
+                                        Row(
+                                            Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            pair.forEach { n ->
+                                                FilterChip(
+                                                    selected = duration == n,
+                                                    onClick = { duration = n },
+                                                    label = { Text("$n min", maxLines = 1) },
+                                                    modifier = Modifier.weight(1f),
+                                                    colors = FilterChipDefaults.filterChipColors(
+                                                        selectedContainerColor = Purple,
+                                                        selectedLabelColor = Dark
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(14.dp))
+                                Button(onClick = {
+                                    remaining = duration * 60L
+                                    deadline = SystemClock.elapsedRealtime() + remaining * 1000
+                                    completed = false
+                                    running = true
+                                    page = Page.SESSION
+                                }, modifier = Modifier.fillMaxWidth()) { Text(t("മെഡിറ്റേഷൻ തുടങ്ങാം", "Start meditation")) }
+                            }
+                        }
+                        Spacer(Modifier.height(18.dp))
+                        OutlinedButton(onClick = { page = Page.BREATH }, modifier = Modifier.fillMaxWidth()) { Text(t("🌬️ ശ്വസന പരിശീലനം", "🌬️ Breathing exercise")) }
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedButton(onClick = { page = Page.PROGRESS }, modifier = Modifier.fillMaxWidth()) { Text(t("📊 എന്റെ പുരോഗതി", "📊 My progress")) }
+                        Spacer(Modifier.height(20.dp))
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedButton(onClick = { page = Page.PREMIUM }, modifier = Modifier.fillMaxWidth()) {
+                            Text(t("👑 ലൈഫ്‌ടൈം പ്രീമിയം — ₹49", "👑 Lifetime Premium — ₹49"))
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        UpdatePanel(malayalam)
+                        Spacer(Modifier.height(12.dp))
+                        Text(t("തുടക്കക്കാർക്കായി • ഓഫ്‌ലൈൻ", "For beginners • Works offline"), color = Muted, fontSize = 13.sp)
+                    }
+                    Page.SESSION -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Text(if (completed) t("പൂർത്തിയായി! ✨", "Session complete! ✨") else t("ശ്വാസത്തിൽ ശ്രദ്ധിക്കുക", "Focus on your breath"), color = Purple, fontSize = 24.sp, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(28.dp))
+                        Text("%02d:%02d".format(remaining / 60, remaining % 60), color = Color.White, fontSize = 64.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(16.dp))
+                        Text(t("സുഖമായി ഇരിക്കുക. പതുക്കെ ശ്വസിക്കുക.", "Sit comfortably. Breathe gently."), color = Muted, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(30.dp))
+                        if (!completed) Button(onClick = {
+                            if (running) {
+                                remaining = ((deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0L) + 999) / 1000
+                                running = false
+                            } else {
+                                deadline = SystemClock.elapsedRealtime() + remaining * 1000
+                                running = true
+                            }
+                        }) { Text(if (running) t("താൽക്കാലികമായി നിർത്തുക", "Pause") else t("തുടരുക", "Resume")) }
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedButton(onClick = { stopSession() }) { Text(t("അവസാനിപ്പിക്കുക", "Finish / Exit")) }
+                    }
+                    Page.PREMIUM -> PremiumScreen(malayalam)
+                    Page.BREATH -> BreathingScreen(malayalam)
+                    Page.PROGRESS -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Text(t("എന്റെ പുരോഗതി", "My progress"), color = Purple, fontSize = 27.sp)
+                        Spacer(Modifier.height(24.dp))
+                        Text(t("പൂർത്തിയാക്കിയ സെഷനുകൾ: $sessions", "Completed sessions: $sessions"), color = Color.White, fontSize = 20.sp)
+                        Spacer(Modifier.height(12.dp))
+                        Text(t("ആകെ മിനിറ്റുകൾ: $totalMinutes", "Total minutes: $totalMinutes"), color = Color.White, fontSize = 20.sp)
+                        Spacer(Modifier.height(14.dp))
+                        Text(t("പൂർത്തിയായ സെഷനുകൾ മാത്രം രേഖപ്പെടുത്തുന്നു.", "Only completed sessions are counted."), color = Muted, fontSize = 13.sp)
+                    }
+                }
+            }
+            if (page != Page.HOME) {
+                TextButton(onClick = { if (page == Page.SESSION) stopSession() else page = Page.HOME }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                    Text(t("← ഹോം", "← Home"))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BreathingScreen(malayalam: Boolean) {
+    var active by remember { mutableStateOf(true) }
+    var seconds by remember { mutableIntStateOf(0) }
+    LaunchedEffect(active) {
+        while (active) { delay(1000); seconds += 1 }
+    }
+    val inhale = seconds % 8 < 4
+    val transition = rememberInfiniteTransition(label = "breathing")
+    val size by transition.animateFloat(
+        initialValue = 0.60f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(4000), repeatMode = RepeatMode.Reverse),
+        label = "breathCircle"
+    )
+    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Text(if (malayalam) "ശ്വസന പരിശീലനം" else "Breathing exercise", color = Purple, fontSize = 25.sp)
+        Spacer(Modifier.height(25.dp))
+        Box(Modifier.size(230.dp), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.fillMaxSize()) {
+                drawCircle(color = Purple.copy(alpha = 0.15f), radius = this.size.minDimension / 2)
+                drawCircle(color = Purple, radius = this.size.minDimension * (if (active) size else 0.60f) / 2)
+            }
+            Text(if (!active) (if (malayalam) "നിർത്തി" else "Paused") else if (inhale) (if (malayalam) "ശ്വാസം എടുക്കുക" else "Inhale") else (if (malayalam) "ശ്വാസം വിടുക" else "Exhale"), color = Dark, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(24.dp))
+        Text(if (malayalam) "4 സെക്കൻഡ് ശ്വാസം എടുക്കുക, 4 സെക്കൻഡ് വിടുക." else "Inhale for 4 seconds, exhale for 4 seconds.", color = Muted, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(22.dp))
+        Button(onClick = { active = !active }) { Text(if (active) (if (malayalam) "നിർത്തുക" else "Pause") else (if (malayalam) "തുടരുക" else "Resume")) }
+        Spacer(Modifier.height(10.dp))
+        Text(if (malayalam) "അസൗകര്യം തോന്നിയാൽ സാധാരണ രീതിയിൽ ശ്വസിക്കുക." else "Breathe normally if you feel uncomfortable.", color = Muted, fontSize = 12.sp, textAlign = TextAlign.Center)
+    }
+}
+
+
+@Composable
+private fun PremiumScreen(malayalam: Boolean) {
+    fun t(ml: String, en: String) = if (malayalam) ml else en
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("👑 ZeroBat Premium", color = Purple, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        Text("₹49", color = Color.White, fontSize = 44.sp, fontWeight = FontWeight.Bold)
+        Text(t("ഒരിക്കൽ മാത്രം • സബ്സ്ക്രിപ്ഷൻ ഇല്ല", "One-time purchase • No subscription"), color = Muted)
+        Spacer(Modifier.height(18.dp))
+        Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(20.dp)) {
+            Column(Modifier.fillMaxWidth().padding(18.dp)) {
+                Text(t("പ്രീമിയം ഫീച്ചറുകൾ (വരാനിരിക്കുന്നു)", "Premium features (coming soon)"), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(12.dp))
+                listOf(
+                    t("🔒 ഗൈഡഡ് മെഡിറ്റേഷൻ", "🔒 Guided meditation"),
+                    t("🔒 ഉറക്കത്തിനുള്ള സെഷനുകൾ", "🔒 Sleep sessions"),
+                    t("🔒 ഫോക്കസ് പ്രോഗ്രാമുകൾ", "🔒 Focus programs"),
+                    t("🔒 ഓഫ്‌ലൈൻ ഓഡിയോ പാക്കുകൾ", "🔒 Offline audio packs")
+                ).forEach { feature ->
+                    Text(feature, color = Muted, modifier = Modifier.padding(vertical = 7.dp))
+                }
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        Text(t("ലൈസൻസ് സ്റ്റാറ്റസ്: ആക്ടീവ് അല്ല", "License status: Not active"), color = Muted)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            t("ഇത് പരീക്ഷണ പതിപ്പാണ്. പണമടയ്ക്കൽ, ഡൗൺലോഡ്, റീസ്റ്റോർ എന്നിവ ഇതുവരെ പ്രവർത്തിക്കുന്നില്ല.",
+              "This is a preview. Payment, downloads, and purchase restoration are not enabled yet."),
+            color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(16.dp))
+        Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
+            Text(t("₹49 നൽകി അൺലോക്ക് ചെയ്യുക (ഉടൻ)", "Unlock for ₹49 (coming soon)"))
+        }
+        OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
+            Text(t("പർച്ചേസ് റീസ്റ്റോർ (ഉടൻ)", "Restore purchase (coming soon)"))
+        }
+    }
+}

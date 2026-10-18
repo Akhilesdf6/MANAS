@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.URL
 import android.os.Bundle
+import com.google.firebase.analytics.FirebaseAnalytics
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -126,11 +127,15 @@ private fun UpdatePanel(malayalam: Boolean) {
     }
 }
 
-private enum class Page { HOME, SESSION, BREATH, PROGRESS }
+private enum class Page { CALM, HOME, SESSION, BREATH, PROGRESS, PREMIUM }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val analyticsPrefs = getSharedPreferences("zerobat_analytics", Context.MODE_PRIVATE)
+        FirebaseAnalytics.getInstance(this).setAnalyticsCollectionEnabled(
+            analyticsPrefs.getBoolean("analytics_allowed", false)
+        )
         setContent { MeditationApp(applicationContext) }
     }
 }
@@ -138,6 +143,16 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun MeditationApp(context: Context) {
     val prefs = remember { context.getSharedPreferences("meditation", Context.MODE_PRIVATE) }
+    val analyticsPrefs = remember { context.getSharedPreferences("zerobat_analytics", Context.MODE_PRIVATE) }
+    val analytics = remember { FirebaseAnalytics.getInstance(context) }
+    var analyticsChoiceMade by remember { mutableStateOf(analyticsPrefs.contains("analytics_allowed")) }
+    var analyticsAllowed by remember { mutableStateOf(analyticsPrefs.getBoolean("analytics_allowed", false)) }
+    fun setAnalyticsAllowed(allowed: Boolean) {
+        analytics.setAnalyticsCollectionEnabled(allowed)
+        analyticsPrefs.edit().putBoolean("analytics_allowed", allowed).apply()
+        analyticsAllowed = allowed
+        analyticsChoiceMade = true
+    }
     var malayalam by remember { mutableStateOf(prefs.getBoolean("malayalam", true)) }
     var page by remember { mutableStateOf(Page.HOME) }
     var duration by remember { mutableIntStateOf(5) }
@@ -160,6 +175,9 @@ private fun MeditationApp(context: Context) {
                     running = false
                     completed = true
                     sessions += 1
+                    if (analyticsAllowed) analytics.logEvent("meditation_completed", Bundle().apply {
+                        putLong("duration_minutes", duration.toLong())
+                    })
                     totalMinutes += duration
                     prefs.edit().putInt("sessions", sessions).putInt("minutes", totalMinutes).apply()
                     break
@@ -169,6 +187,17 @@ private fun MeditationApp(context: Context) {
         }
     }
 
+    if (!analyticsChoiceMade) {
+        AlertDialog(
+            onDismissRequest = { setAnalyticsAllowed(false) },
+            title = { Text(if (malayalam) "ഉപയോഗ കണക്കുകൾ പങ്കിടണോ?" else "Share anonymous usage analytics?") },
+            text = { Text(if (malayalam)
+                "ZeroBat ഉപയോഗിക്കുന്നവരുടെ എണ്ണം, app തുറക്കൽ, പൂർത്തിയാക്കിയ meditation sessions എന്നിവയുടെ കണക്കുകൾ മെച്ചപ്പെടുത്തലിനായി ഉപയോഗിക്കുന്നു. പേര്, ഫോൺ, mood, anxiety വിവരങ്ങൾ ശേഖരിക്കുന്നില്ല. ഇത് ഐച്ഛികമാണ്; പിന്നീട് മാറ്റാം."
+                else "Help improve ZeroBat with app usage and meditation completion counts. We do not send your name, phone number, mood, or anxiety details. Optional; change anytime.") },
+            confirmButton = { TextButton(onClick = { setAnalyticsAllowed(true) }) { Text(if (malayalam) "അനുവദിക്കുക" else "Allow") } },
+            dismissButton = { TextButton(onClick = { setAnalyticsAllowed(false) }) { Text(if (malayalam) "വേണ്ട" else "No thanks") } }
+        )
+    }
     MaterialTheme(colorScheme = darkColorScheme(primary = Purple, background = Dark, surface = Panel)) {
         Column(Modifier.fillMaxSize().background(Dark).windowInsetsPadding(WindowInsets.safeDrawing).padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -224,9 +253,27 @@ private fun MeditationApp(context: Context) {
                         Spacer(Modifier.height(18.dp))
                         OutlinedButton(onClick = { page = Page.BREATH }, modifier = Modifier.fillMaxWidth()) { Text(t("🌬️ ശ്വസന പരിശീലനം", "🌬️ Breathing exercise")) }
                         Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(12.dp))
+                        Button(
+                            onClick = { page = Page.CALM },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(t("🌿 പെട്ടെന്ന് ശാന്തമാകാം", "🌿 Quick Calm"))
+                        }
                         OutlinedButton(onClick = { page = Page.PROGRESS }, modifier = Modifier.fillMaxWidth()) { Text(t("📊 എന്റെ പുരോഗതി", "📊 My progress")) }
                         Spacer(Modifier.height(20.dp))
                         Spacer(Modifier.height(12.dp))
+                        OutlinedButton(onClick = { page = Page.PREMIUM }, modifier = Modifier.fillMaxWidth()) {
+                            Text(t("👑 ലൈഫ്‌ടൈം പ്രീമിയം — ₹49", "👑 Lifetime Premium — ₹49"))
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        TextButton(onClick = { analyticsChoiceMade = false }, modifier = Modifier.fillMaxWidth()) {
+                            Text(t("📊 അനലിറ്റിക്സ് സ്വകാര്യത", "📊 Analytics privacy"))
+                        }
+                        Text(
+                            if (analyticsAllowed) t("അനലിറ്റിക്സ് ഓൺ", "Analytics on") else t("അനലിറ്റിക്സ് ഓഫ്", "Analytics off"),
+                            color = Muted, fontSize = 12.sp
+                        )
                         UpdatePanel(malayalam)
                         Spacer(Modifier.height(12.dp))
                         Text(t("തുടക്കക്കാർക്കായി • ഓഫ്‌ലൈൻ", "For beginners • Works offline"), color = Muted, fontSize = 13.sp)
@@ -250,7 +297,9 @@ private fun MeditationApp(context: Context) {
                         Spacer(Modifier.height(10.dp))
                         OutlinedButton(onClick = { stopSession() }) { Text(t("അവസാനിപ്പിക്കുക", "Finish / Exit")) }
                     }
+                    Page.PREMIUM -> PremiumScreen(malayalam)
                     Page.BREATH -> BreathingScreen(malayalam)
+                    Page.CALM -> QuickCalmScreen(malayalam)
                     Page.PROGRESS -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                         Text(t("എന്റെ പുരോഗതി", "My progress"), color = Purple, fontSize = 27.sp)
                         Spacer(Modifier.height(24.dp))
@@ -301,5 +350,179 @@ private fun BreathingScreen(malayalam: Boolean) {
         Button(onClick = { active = !active }) { Text(if (active) (if (malayalam) "നിർത്തുക" else "Pause") else (if (malayalam) "തുടരുക" else "Resume")) }
         Spacer(Modifier.height(10.dp))
         Text(if (malayalam) "അസൗകര്യം തോന്നിയാൽ സാധാരണ രീതിയിൽ ശ്വസിക്കുക." else "Breathe normally if you feel uncomfortable.", color = Muted, fontSize = 12.sp, textAlign = TextAlign.Center)
+    }
+}
+
+
+@Composable
+private fun PremiumScreen(malayalam: Boolean) {
+    fun t(ml: String, en: String) = if (malayalam) ml else en
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("👑 ZeroBat Premium", color = Purple, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        Text("₹49", color = Color.White, fontSize = 44.sp, fontWeight = FontWeight.Bold)
+        Text(t("ഒരിക്കൽ മാത്രം • സബ്സ്ക്രിപ്ഷൻ ഇല്ല", "One-time purchase • No subscription"), color = Muted)
+        Spacer(Modifier.height(18.dp))
+        Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(20.dp)) {
+            Column(Modifier.fillMaxWidth().padding(18.dp)) {
+                Text(t("പ്രീമിയം ഫീച്ചറുകൾ (വരാനിരിക്കുന്നു)", "Premium features (coming soon)"), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(12.dp))
+                listOf(
+                    t("🔒 ഗൈഡഡ് മെഡിറ്റേഷൻ", "🔒 Guided meditation"),
+                    t("🔒 ഉറക്കത്തിനുള്ള സെഷനുകൾ", "🔒 Sleep sessions"),
+                    t("🔒 ഫോക്കസ് പ്രോഗ്രാമുകൾ", "🔒 Focus programs"),
+                    t("🔒 ഓഫ്‌ലൈൻ ഓഡിയോ പാക്കുകൾ", "🔒 Offline audio packs")
+                ).forEach { feature ->
+                    Text(feature, color = Muted, modifier = Modifier.padding(vertical = 7.dp))
+                }
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        Text(t("ലൈസൻസ് സ്റ്റാറ്റസ്: ആക്ടീവ് അല്ല", "License status: Not active"), color = Muted)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            t("ഇത് പരീക്ഷണ പതിപ്പാണ്. പണമടയ്ക്കൽ, ഡൗൺലോഡ്, റീസ്റ്റോർ എന്നിവ ഇതുവരെ പ്രവർത്തിക്കുന്നില്ല.",
+              "This is a preview. Payment, downloads, and purchase restoration are not enabled yet."),
+            color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(16.dp))
+        Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
+            Text(t("₹49 നൽകി അൺലോക്ക് ചെയ്യുക (ഉടൻ)", "Unlock for ₹49 (coming soon)"))
+        }
+        OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
+            Text(t("പർച്ചേസ് റീസ്റ്റോർ (ഉടൻ)", "Restore purchase (coming soon)"))
+        }
+    }
+}
+
+
+@Composable
+private fun QuickCalmScreen(malayalam: Boolean) {
+    var step by remember { mutableIntStateOf(0) }
+
+    val ml = listOf(
+        "ചുറ്റും കാണുന്ന 5 കാര്യങ്ങൾ ശ്രദ്ധിക്കുക.",
+        "സ്പർശിച്ച് അറിയാൻ കഴിയുന്ന 4 കാര്യങ്ങൾ ശ്രദ്ധിക്കുക.",
+        "കേൾക്കാൻ കഴിയുന്ന 3 ശബ്ദങ്ങൾ ശ്രദ്ധിക്കുക.",
+        "തിരിച്ചറിയാൻ കഴിയുന്ന 2 മണങ്ങൾ ശ്രദ്ധിക്കുക.",
+        "അറിയാൻ കഴിയുന്ന 1 രുചി ശ്രദ്ധിക്കുക."
+    )
+
+    val en = listOf(
+        "Notice 5 things you can see.",
+        "Notice 4 things you can feel.",
+        "Notice 3 sounds you can hear.",
+        "Notice 2 things you can smell.",
+        "Notice 1 thing you can taste."
+    )
+
+    val steps = if (malayalam) ml else en
+
+    Column(
+        Modifier.fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            if (malayalam) "🌿 ക്വിക്ക് കാം" else "🌿 Quick Calm",
+            fontSize = 27.sp,
+            color = Purple,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        Text(
+            if (malayalam)
+                "ചുറ്റുപാടുകളിലേക്ക് ശ്രദ്ധ തിരിക്കാൻ ഒരു ചെറിയ പരിശീലനം."
+            else
+                "A gentle exercise to reconnect with your surroundings.",
+            color = Muted,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(Modifier.height(28.dp))
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Panel),
+            shape = RoundedCornerShape(22.dp)
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (step < 5) {
+                    Text(
+                        "${step + 1} / 5",
+                        color = Purple,
+                        fontSize = 22.sp
+                    )
+
+                    Spacer(Modifier.height(20.dp))
+
+                    Text(
+                        steps[step],
+                        color = Color.White,
+                        fontSize = 21.sp,
+                        textAlign = TextAlign.Center
+                    )
+                } else {
+                    Text(
+                        if (malayalam)
+                            "✨ പരിശീലനം പൂർത്തിയായി"
+                        else
+                            "✨ Exercise complete",
+                        color = Purple,
+                        fontSize = 22.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(28.dp))
+
+        if (step < 5) {
+            Button(
+                onClick = { step++ },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    if (malayalam) "അടുത്തത് →" else "Next →"
+                )
+            }
+        } else {
+            Button(
+                onClick = { step = 0 },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    if (malayalam) "വീണ്ടും തുടങ്ങുക" else "Start again"
+                )
+            }
+        }
+
+        if (step > 0) {
+            TextButton(onClick = { step-- }) {
+                Text(if (malayalam) "← പിന്നോട്ട്" else "← Back")
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        Text(
+            if (malayalam)
+                "അസൗകര്യമുള്ള ഘട്ടങ്ങൾ ഒഴിവാക്കാം. നിർബന്ധമില്ല."
+            else
+                "You can skip any uncomfortable step.",
+            color = Muted,
+            fontSize = 12.sp,
+            textAlign = TextAlign.Center
+        )
     }
 }

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "363356345837",
+    "project_id": "zerobat-meditation",
+    "storage_bucket": "zerobat-meditation.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:363356345837:android:50628efed36241407683e4",
+        "android_client_info": {
+          "package_name": "com.zerobat.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBaJH4QaktqCTMC-XAO0rxVQbdW-icpYSw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

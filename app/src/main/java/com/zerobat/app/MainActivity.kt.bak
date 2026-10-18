@@ -1,0 +1,225 @@
+package com.zerobat.app
+
+import android.content.Context
+import android.os.Bundle
+import android.os.SystemClock
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+
+private val Purple = Color(0xFFA78BFA)
+private val Dark = Color(0xFF100F18)
+private val Panel = Color(0xFF1C1A29)
+private val Muted = Color(0xFFBDB8CC)
+private const val DEFAULT_PIN = "1234"
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent { ZeroBatApp(applicationContext) }
+    }
+}
+
+private enum class Screen { SETUP, RUNNING, WARNING, BREAK }
+
+@Composable
+private fun ZeroBatApp(context: Context) {
+    val prefs = remember { context.getSharedPreferences("zerobat_settings", Context.MODE_PRIVATE) }
+    var minutes by remember { mutableIntStateOf(5) }
+    var custom by remember { mutableStateOf("20") }
+    var screen by remember { mutableStateOf(Screen.SETUP) }
+    var deadline by remember { mutableLongStateOf(0L) }
+    var remaining by remember { mutableLongStateOf(0L) }
+    var pin by remember { mutableStateOf(prefs.getString("parent_pin", DEFAULT_PIN) ?: DEFAULT_PIN) }
+    var settings by remember { mutableStateOf(false) }
+    var changePin by remember { mutableStateOf(false) }
+    var pinDialog by remember { mutableStateOf(false) }
+    var entered by remember { mutableStateOf("") }
+    var newPin by remember { mutableStateOf("") }
+    var pinError by remember { mutableStateOf(false) }
+
+    LaunchedEffect(screen, deadline) {
+        if (screen == Screen.RUNNING || screen == Screen.WARNING) {
+            while (true) {
+                val ms = (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+                remaining = (ms + 999L) / 1000L
+                if (ms <= 0L) { screen = Screen.BREAK; break }
+                screen = if (ms <= 3_000L) Screen.WARNING else Screen.RUNNING
+                delay(200L)
+            }
+        }
+    }
+    BackHandler(enabled = screen != Screen.SETUP) {
+        if (screen == Screen.BREAK || screen == Screen.WARNING) {
+            entered = ""; pinError = false; pinDialog = true
+        } else screen = Screen.SETUP
+    }
+
+    MaterialTheme(colorScheme = darkColorScheme(primary = Purple, background = Dark, surface = Panel)) {
+        Surface(Modifier.fillMaxSize(), color = if (screen == Screen.BREAK) Color.Black else Dark) {
+            when (screen) {
+                Screen.SETUP -> SetupScreen(minutes, { minutes = it }, custom, { custom = it }, {
+                    val m = if (minutes == -1) (custom.toIntOrNull() ?: 20).coerceIn(1, 180) else minutes
+                    deadline = SystemClock.elapsedRealtime() + m * 60_000L
+                    remaining = m * 60L
+                    screen = Screen.RUNNING
+                }, { settings = true })
+                Screen.RUNNING -> RunningScreen(remaining) { screen = Screen.SETUP }
+                Screen.WARNING -> WarningScreen(remaining)
+                Screen.BREAK -> BreakScreen { entered = ""; pinError = false; pinDialog = true }
+            }
+        }
+    }
+
+    if (settings) AlertDialog(
+        onDismissRequest = { settings = false },
+        title = { Text("Parent settings") },
+        text = { Column {
+            Text("Default PIN is 1234. Change it before regular use.")
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(onClick = { settings = false; changePin = true; newPin = "" }) { Text("Change parent PIN") }
+        } },
+        confirmButton = { TextButton(onClick = { settings = false }) { Text("Done") } }
+    )
+    if (changePin) AlertDialog(
+        onDismissRequest = { changePin = false },
+        title = { Text("Set parent PIN") },
+        text = { Column {
+            Text("Choose a 4–8 digit PIN.")
+            OutlinedTextField(newPin, { if (it.length <= 8 && it.all(Char::isDigit)) newPin = it },
+                label = { Text("New PIN") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                visualTransformation = PasswordVisualTransformation())
+        } },
+        confirmButton = { TextButton(onClick = {
+            if (newPin.length in 4..8) {
+                pin = newPin; prefs.edit().putString("parent_pin", pin).apply(); changePin = false
+            }
+        }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = { changePin = false }) { Text("Cancel") } }
+    )
+    if (pinDialog) AlertDialog(
+        onDismissRequest = { pinDialog = false },
+        title = { Text("Parent unlock") },
+        text = { Column {
+            Text("Enter parent PIN to end the simulation.")
+            OutlinedTextField(entered, { if (it.length <= 8 && it.all(Char::isDigit)) entered = it },
+                label = { Text("Parent PIN") }, singleLine = true, isError = pinError,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                visualTransformation = PasswordVisualTransformation())
+            if (pinError) Text("Incorrect PIN", color = MaterialTheme.colorScheme.error)
+        } },
+        confirmButton = { TextButton(onClick = {
+            if (entered == pin) { pinDialog = false; screen = Screen.SETUP } else pinError = true
+        }) { Text("Unlock") } },
+        dismissButton = { TextButton(onClick = { pinDialog = false }) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun SetupScreen(minutes: Int, setMinutes: (Int) -> Unit, custom: String,
+    setCustom: (String) -> Unit, onStart: () -> Unit, onSettings: () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Text("🔋 ZeroBat", fontSize = 38.sp, fontWeight = FontWeight.ExtraBold, color = Purple)
+        Spacer(Modifier.height(8.dp))
+        Text("Screen Time Break Simulator", fontSize = 17.sp, color = Color.White)
+        Spacer(Modifier.height(24.dp))
+        Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(24.dp)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Text("Choose a break timer", color = Muted)
+                listOf(1, 5, 10, 15, 30).forEach { n ->
+                    Row(Modifier.fillMaxWidth().clickable { setMinutes(n) }.padding(vertical = 1.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(minutes == n, { setMinutes(n) })
+                        Text("$n minute${if (n == 1) "" else "s"}", color = Color.White)
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(minutes == -1, { setMinutes(-1) })
+                    Text("Custom (1–180 min)", color = Color.White)
+                }
+                if (minutes == -1) OutlinedTextField(custom, { if (it.length <= 3 && it.all(Char::isDigit)) setCustom(it) },
+                    label = { Text("Minutes") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth())
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        Button(onClick = onStart, enabled = minutes != -1 || (custom.toIntOrNull() ?: 0) in 1..180,
+            modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(18.dp)) {
+            Text("START TIMER", fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(10.dp))
+        OutlinedButton(onClick = onSettings, modifier = Modifier.fillMaxWidth()) { Text("Parent settings / PIN") }
+        Spacer(Modifier.height(14.dp))
+        Text("Simulation only — no real battery change or system shutdown. Android controls remain available.",
+            color = Muted, fontSize = 12.sp, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun RunningScreen(remaining: Long, cancel: () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center) {
+        Text(if (remaining <= 10) "🔴 Break starting soon" else "⏳ Timer running", color = Purple, fontSize = 24.sp)
+        Spacer(Modifier.height(24.dp))
+        Text("%02d:%02d".format(remaining / 60, remaining % 60), fontSize = 60.sp,
+            color = Color.White, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(24.dp))
+        OutlinedButton(onClick = cancel) { Text("Cancel timer") }
+        Text("You can cancel at any time.", color = Muted, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun WarningScreen(remaining: Long) {
+    val transition = rememberInfiniteTransition(label = "pulse")
+    val scale by transition.animateFloat(0.8f, 1.08f,
+        infiniteRepeatable(tween(450), RepeatMode.Reverse), label = "scale")
+    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center) {
+        Text("SIMULATION", color = Color(0xFFFF7777), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+        Text("▱", color = Color(0xFFFF5C68), fontSize = 100.sp, modifier = Modifier.scale(scale))
+        Text("Break starting", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Text("Transition in ${remaining.coerceAtMost(3)} seconds", color = Muted)
+        Spacer(Modifier.height(20.dp))
+        Text("Your phone remains on. Press Back to leave.", color = Muted, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun BreakScreen(onUnlock: () -> Unit) {
+    Column(Modifier.fillMaxSize().background(Color.Black).padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Text("●", color = Color(0xFFFF5C68), fontSize = 42.sp)
+        Spacer(Modifier.height(12.dp))
+        Text("Screen break", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        Text("Battery-themed simulation • Phone is still on", color = Color.Gray, fontSize = 13.sp,
+            textAlign = TextAlign.Center)
+        Spacer(Modifier.height(30.dp))
+        Button(onClick = onUnlock) { Text("Parent unlock") }
+        Spacer(Modifier.height(10.dp))
+        Text("Android Back remains available.", color = Color.Gray, fontSize = 12.sp)
+    }
+}

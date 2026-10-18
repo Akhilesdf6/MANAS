@@ -1,14 +1,7 @@
 .gradle/
-.gradle-*/
-build/
+.idea/
 **/build/
 local.properties
-*.apk
-*.aab
 *.jks
 *.keystore
-*.key
-*.pem
-*.p12
-*.bak
-.idea/
+app/google-services.json
