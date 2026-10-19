@@ -2,6 +2,12 @@ package com.manas.meditation
 
 import android.content.Context
 import android.os.Bundle
+import android.os.Build
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import android.speech.tts.TextToSpeech
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -25,6 +31,8 @@ import androidx.compose.ui.unit.sp
 import java.util.Locale
 
 private val Navy=Color(0xFF10142E)
+private val LightBg=Color(0xFFF6F5FC)
+private val LightPanel=Color(0xFFFFFFFF)
 private val Panel=Color(0xFF23264D)
 private val Lavender=Color(0xFFB7A8FF)
 private val Muted=Color(0xFFCDD0EB)
@@ -42,61 +50,126 @@ class MainActivity:ComponentActivity(){
 private fun ManasApp(context:Context){
  val prefs=remember { context.getSharedPreferences("manas_progress",Context.MODE_PRIVATE) }
  val completed=remember { mutableStateListOf<Int>().apply { addAll((1..90).filter { prefs.getBoolean("done_$it",false) }) } }
+ // MANAS_V11_PATCH
  var page by remember { mutableStateOf("Home") }
+ var themeChoice by remember { mutableStateOf(prefs.getString("theme", "System") ?: "System") }
+ var morning by remember { mutableStateOf(prefs.getBoolean("morning", false)) }
+ var evening by remember { mutableStateOf(prefs.getBoolean("evening", false)) }
+ var completionVersion by remember { mutableIntStateOf(0) }
+ val dates=remember(completionVersion) { prefs.getStringSet("meditation_dates", emptySet())!!.toSet() }
+ val today=LocalDate.now()
+ val currentStreak=remember(dates) { streak(dates, today) }
+ val longestStreak=remember(dates) { longestStreak(dates) }
+ val requestNotifications=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+   if(granted) ReminderScheduler.schedule(context, morning, evening)
+ }
+ fun setReminder(isMorning:Boolean, enabled:Boolean) {
+   if(isMorning) morning=enabled else evening=enabled
+   prefs.edit().putBoolean("morning",morning).putBoolean("evening",evening).apply()
+   ReminderScheduler.schedule(context,morning,evening)
+   if(enabled && Build.VERSION.SDK_INT>=33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)
+     requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+ }
+ val dark=when(themeChoice){ "Light"->false;"Dark"->true;else->(androidx.compose.foundation.isSystemInDarkTheme()) }
+ val bg=if(dark) Navy else LightBg
+ val panel=if(dark) Panel else LightPanel
+ val fg=if(dark) Color.White else Color(0xFF17182D)
+ val secondary=if(dark) Muted else Color(0xFF4F536D)
+ val accent=if(dark) Lavender else Color(0xFF5842B6)
+ val gold=if(dark) Gold else Color(0xFF77520E)
  var selectedDay by remember { mutableIntStateOf(1) }
  var speaking by remember { mutableStateOf(false) }
  var ttsReady by remember { mutableStateOf(false) }
  val tts=remember { TextToSpeech(context) { status -> ttsReady=status==TextToSpeech.SUCCESS } }
  DisposableEffect(tts){onDispose { tts.stop();tts.shutdown() }}
- val textColor=Color.White
- MaterialTheme(colorScheme=darkColorScheme(primary=Lavender,background=Navy,surface=Panel,onSurface=Color.White,onBackground=Color.White)) {
- Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Navy,Color(0xFF1D1941),Navy)))) {
+ val textColor=fg
+ MaterialTheme(colorScheme=if(dark) darkColorScheme(primary=accent,background=bg,surface=panel,onSurface=fg,onBackground=fg) else lightColorScheme(primary=accent,background=bg,surface=panel,onSurface=fg,onBackground=fg)) {
+ Column(Modifier.fillMaxSize().background(if(dark) Brush.verticalGradient(listOf(Navy,Color(0xFF1D1941),Navy)) else Brush.verticalGradient(listOf(bg,bg)))) {
    Row(Modifier.fillMaxWidth().padding(20.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
-      Column { Text("MANAS",fontSize=28.sp,fontWeight=FontWeight.Bold,color=Color.White);Text("A Journey Within",fontSize=12.sp,color=Muted) }
+      Column { Text("MANAS",fontSize=28.sp,fontWeight=FontWeight.Bold,color=fg);Text("A Journey Within",fontSize=12.sp,color=secondary) }
       Icon(Icons.Default.SelfImprovement,null,tint=Gold,modifier=Modifier.size(34.dp))
    }
    Box(Modifier.weight(1f)) {
      when(page){
        "Home" -> LazyColumn(contentPadding=PaddingValues(horizontal=18.dp,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
           item { Text("മനസ്സിലേക്കൊരു യാത്ര 🌙",fontSize=23.sp,fontWeight=FontWeight.Bold,color=textColor) }
-          item { Tile { Text("7 DAYS FREE",color=Gold,fontWeight=FontWeight.Bold); Spacer(Modifier.height(8.dp));Text("ഇന്നത്തെ ധ്യാനം",fontSize=22.sp,color=Color.White);Text("Day ${((1..7).firstOrNull { it !in completed } ?: 7)} · ${title((1..7).firstOrNull { it !in completed } ?: 7)}",color=Muted);Spacer(Modifier.height(12.dp));Button(onClick={selectedDay=(1..7).firstOrNull { it !in completed } ?: 7;page="Player"}) {Text("Start Meditation")}} }
-          item { Tile { Text("90 DAYS PREMIUM",color=Gold,fontWeight=FontWeight.Bold);Text("₹199 / 12 months",fontSize=25.sp,color=Color.White);Text("Payment is not enabled in this preview build.",color=Muted,fontSize=12.sp);TextButton(onClick={page="Premium"}){Text("View Premium Plan →")}} }
-          item { Text("Completed: ${completed.size} / 90",color=Muted);LinearProgressIndicator(progress={completed.size/90f},modifier=Modifier.fillMaxWidth(),color=Lavender) }
+          item { Tile { Text("7 DAYS FREE",color=gold,fontWeight=FontWeight.Bold); Spacer(Modifier.height(8.dp));Text("ഇന്നത്തെ ധ്യാനം",fontSize=22.sp,color=fg);Text("Day ${((1..7).firstOrNull { it !in completed } ?: 7)} · ${title((1..7).firstOrNull { it !in completed } ?: 7)}",color=secondary);Spacer(Modifier.height(12.dp));Button(onClick={selectedDay=(1..7).firstOrNull { it !in completed } ?: 7;page="Player"}) {Text("Start Meditation")}} }
+          item { Tile { Text("90 DAYS PREMIUM",color=gold,fontWeight=FontWeight.Bold);Text("₹199 / 12 months",fontSize=25.sp,color=fg);Text("Payment is not enabled in this preview build.",color=secondary,fontSize=12.sp);TextButton(onClick={page="Premium"}){Text("View Premium Plan →")}} }
+          item { Text("Completed: ${completed.size} / 90",color=secondary);LinearProgressIndicator(progress={completed.size/90f},modifier=Modifier.fillMaxWidth(),color=accent) }
        }
        "Journey" -> LazyColumn(contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
-          item { Text("90-Day Meditation Journey",fontSize=22.sp,fontWeight=FontWeight.Bold,color=Color.White);Text("Day 1–7 Free · Day 8–90 Premium",color=Muted) }
+          item { Text("90-Day Meditation Journey",fontSize=22.sp,fontWeight=FontWeight.Bold,color=fg);Text("Day 1–7 Free · Day 8–90 Premium",color=secondary) }
           items((1..90).toList()){day->
             Tile { Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.fillMaxWidth()){
-              Column(Modifier.weight(1f)) {Text("Day $day · ${title(day)}",color=Color.White,fontWeight=FontWeight.Medium);Text(if(day<=7) "FREE · 5 min" else "PREMIUM · 10 min",color=if(day<=7) Color(0xFFA2E6C7) else Gold,fontSize=12.sp)}
+              Column(Modifier.weight(1f)) {Text("Day $day · ${title(day)}",color=fg,fontWeight=FontWeight.Medium);Text(if(day<=7) "FREE · 5 min" else "PREMIUM · 10 min",color=if(day<=7) Color(0xFFA2E6C7) else Gold,fontSize=12.sp)}
               if(day in completed) Icon(Icons.Default.CheckCircle,null,tint=Color(0xFFA2E6C7)) else if(day>7) Icon(Icons.Default.Lock,null,tint=Gold) else IconButton(onClick={selectedDay=day;page="Player"}){Icon(Icons.Default.PlayArrow,"Play",tint=Lavender)}
             }}
           }
        }
        "Player" -> Column(Modifier.fillMaxSize().padding(24.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
            Icon(Icons.Default.SelfImprovement,null,modifier=Modifier.size(110.dp),tint=Lavender)
-           Spacer(Modifier.height(20.dp));Text("Day $selectedDay",color=Gold);Text(title(selectedDay),fontSize=25.sp,color=Color.White,textAlign=TextAlign.Center)
-           Spacer(Modifier.height(14.dp));Text("Malayalam guidance · device text-to-speech preview",color=Muted,textAlign=TextAlign.Center,fontSize=12.sp)
+           Spacer(Modifier.height(20.dp));Text("Day $selectedDay",color=gold);Text(title(selectedDay),fontSize=25.sp,color=fg,textAlign=TextAlign.Center)
+           Spacer(Modifier.height(14.dp));Text("Malayalam guidance · device text-to-speech preview",color=secondary,textAlign=TextAlign.Center,fontSize=12.sp)
            Spacer(Modifier.height(22.dp));Button(enabled=ttsReady,onClick={if(speaking){tts.stop();speaking=false}else{tts.language=Locale.forLanguageTag("ml-IN");tts.speak(guidance(selectedDay),TextToSpeech.QUEUE_FLUSH,null,"manas-$selectedDay");speaking=true}}){Icon(if(speaking) Icons.Default.Stop else Icons.Default.PlayArrow,null);Text(if(speaking) "Stop guidance" else "Play guidance")}
-           Spacer(Modifier.height(10.dp));Text("Malayalam voice availability depends on installed TTS engine.",color=Muted,fontSize=12.sp,textAlign=TextAlign.Center)
-           Spacer(Modifier.height(20.dp));Button(onClick={if(selectedDay<=7){if(selectedDay !in completed)completed.add(selectedDay);prefs.edit().putBoolean("done_$selectedDay",true).apply();page="Progress"}else page="Premium"}) {Text(if(selectedDay<=7) "Mark Session Complete" else "Premium Required")}
+           Spacer(Modifier.height(10.dp));Text("Malayalam voice availability depends on installed TTS engine.",color=secondary,fontSize=12.sp,textAlign=TextAlign.Center)
+           Spacer(Modifier.height(20.dp));Button(onClick={if(selectedDay<=7){if(selectedDay !in completed)completed.add(selectedDay)
+             val newDates=prefs.getStringSet("meditation_dates", emptySet())!!.toMutableSet()
+             newDates.add(LocalDate.now().toString())
+             prefs.edit().putBoolean("done_$selectedDay",true).putStringSet("meditation_dates",newDates).apply()
+             completionVersion++
+             page="Progress"}else page="Premium"}) {Text(if(selectedDay<=7) "Mark Session Complete" else "Premium Required")}
        }
        "Progress" -> Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(18.dp)){
-          Text("My Progress",fontSize=25.sp,color=Color.White,fontWeight=FontWeight.Bold)
-          Tile {Text("${completed.size} sessions completed",fontSize=23.sp,color=Color.White);Spacer(Modifier.height(12.dp));LinearProgressIndicator(progress={completed.size/90f},modifier=Modifier.fillMaxWidth())}
-          Tile {Text("Free journey: ${completed.count{it<=7}} / 7",color=Color.White);Text("Premium journey: locked in preview",color=Muted)}
-          Text("Progress is stored on this device only. Reinstalling may remove it.",color=Muted,fontSize=12.sp)
+          Text("My Progress",fontSize=25.sp,color=fg,fontWeight=FontWeight.Bold)
+          Tile { Text("🔥 $currentStreak day streak",color=fg,fontSize=22.sp); Text("Longest streak: $longestStreak days",color=secondary) }
+          Tile {Text("${completed.size} sessions completed",fontSize=23.sp,color=fg);Spacer(Modifier.height(12.dp));LinearProgressIndicator(progress={completed.size/90f},modifier=Modifier.fillMaxWidth())}
+          Tile {Text("Free journey: ${completed.count{it<=7}} / 7",color=fg);Text("Premium journey: locked in preview",color=secondary)}
+          Text("Progress is stored on this device only. Reinstalling may remove it.",color=secondary,fontSize=12.sp)
+       }
+       "Settings" -> LazyColumn(contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+         item { Text("Settings",fontSize=25.sp,color=fg,fontWeight=FontWeight.Bold) }
+         item { Tile {
+           Text("Appearance",color=fg,fontWeight=FontWeight.Bold)
+           listOf("System","Light","Dark").forEach { choice ->
+             Row(verticalAlignment=Alignment.CenterVertically) {
+               RadioButton(selected=themeChoice==choice,onClick={themeChoice=choice;prefs.edit().putString("theme",choice).apply()})
+               Text(choice,color=fg)
+             }
+           }
+         } }
+         item { Tile {
+           Text("Daily reminders",color=fg,fontWeight=FontWeight.Bold)
+           Row(verticalAlignment=Alignment.CenterVertically) { Text("Morning · 7:00 AM",color=fg,modifier=Modifier.weight(1f)); Switch(checked=morning,onCheckedChange={setReminder(true,it)}) }
+           Row(verticalAlignment=Alignment.CenterVertically) { Text("Evening · 8:00 PM",color=fg,modifier=Modifier.weight(1f)); Switch(checked=evening,onCheckedChange={setReminder(false,it)}) }
+           Text("Reminders may arrive slightly later due to Android battery optimization.",color=secondary,fontSize=12.sp)
+         } }
+         item { Tile { Text("Your progress",color=fg,fontWeight=FontWeight.Bold); Text("Current streak: $currentStreak days",color=secondary);Text("Longest streak: $longestStreak days",color=secondary) } }
+         item { Text("MANAS v1.1 · Progress stored on this device",color=secondary,fontSize=12.sp) }
        }
        "Premium" -> Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(18.dp)){
-          Icon(Icons.Default.WorkspacePremium,null,tint=Gold,modifier=Modifier.size(60.dp));Text("MANAS PREMIUM",fontSize=27.sp,fontWeight=FontWeight.Bold,color=Color.White)
-          Tile {Text("₹199 / 12 months",fontSize=27.sp,color=Gold,fontWeight=FontWeight.Bold);Text("90-day guided Malayalam meditation curriculum",color=Color.White);Text("No automatic renewal — planned pricing",color=Muted);Spacer(Modifier.height(12.dp));Button(onClick={}) {Text("Payments coming later")}}
-          Text("This build does not accept payments or unlock paid content. Billing must be implemented and verified before release.",color=Muted,fontSize=13.sp)
+          Icon(Icons.Default.WorkspacePremium,null,tint=Gold,modifier=Modifier.size(60.dp));Text("MANAS PREMIUM",fontSize=27.sp,fontWeight=FontWeight.Bold,color=fg)
+          Tile {Text("₹199 / 12 months",fontSize=27.sp,color=gold,fontWeight=FontWeight.Bold);Text("90-day guided Malayalam meditation curriculum",color=fg);Text("No automatic renewal — planned pricing",color=secondary);Spacer(Modifier.height(12.dp));Button(onClick={}) {Text("Payments coming later")}}
+          Text("This build does not accept payments or unlock paid content. Billing must be implemented and verified before release.",color=secondary,fontSize=13.sp)
        }
      }
    }
-   NavigationBar(containerColor=Panel){
-      listOf(Triple("Home",Icons.Default.Home,"Home"),Triple("Journey",Icons.Default.CalendarMonth,"Journey"),Triple("Progress",Icons.Default.BarChart,"Progress"),Triple("Premium",Icons.Default.WorkspacePremium,"Premium")).forEach { (name,icon,label)->NavigationBarItem(selected=page==name,onClick={tts.stop();speaking=false;page=name},icon={Icon(icon,label)},label={Text(label)},colors=NavigationBarItemDefaults.colors(selectedIconColor=Lavender,selectedTextColor=Lavender,unselectedIconColor=Muted,unselectedTextColor=Muted)) }
+   NavigationBar(containerColor=panel){
+      listOf(Triple("Home",Icons.Default.Home,"Home"),Triple("Journey",Icons.Default.CalendarMonth,"Journey"),Triple("Progress",Icons.Default.BarChart,"Progress"),Triple("Premium",Icons.Default.WorkspacePremium,"Premium"),Triple("Settings",Icons.Default.Settings,"Settings")).forEach { (name,icon,label)->NavigationBarItem(selected=page==name,onClick={tts.stop();speaking=false;page=name},icon={Icon(icon,label)},label={Text(label)},colors=NavigationBarItemDefaults.colors(selectedIconColor=accent,selectedTextColor=accent,unselectedIconColor=secondary,unselectedTextColor=secondary)) }
    }
  }
  }
 }
-@Composable private fun Tile(content:@Composable ColumnScope.()->Unit){Column(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(20.dp)).padding(18.dp),content=content)}
+@Composable private fun Tile(content:@Composable ColumnScope.()->Unit){Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(20.dp)).padding(18.dp),content=content)}
+
+private fun streak(dates:Set<String>, today:LocalDate):Int {
+ var day=if(today.toString() in dates) today else today.minusDays(1)
+ var count=0
+ while(day.toString() in dates) { count++; day=day.minusDays(1) }
+ return count
+}
+private fun longestStreak(dates:Set<String>):Int {
+ val sorted=dates.mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }.sorted()
+ var best=0;var run=0;var previous:LocalDate?=null
+ for(day in sorted){ run=if(previous!=null && ChronoUnit.DAYS.between(previous,day)==1L) run+1 else 1;best=maxOf(best,run);previous=day }
+ return best
+}
