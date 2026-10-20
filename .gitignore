@@ -6,3 +6,10 @@ local.properties
 *.apk
 *.jks
 *.keystore
+.gradle/
+.kotlin/
+build/
+app/build/
+local.properties
+*.apk
+*.aab
