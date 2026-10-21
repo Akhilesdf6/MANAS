@@ -2,9 +2,9 @@ name: MANAS Android Auto Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/minimalist-ui-v2]
   pull_request:
-    branches: [main]
+    branches: [main, feature/minimalist-ui-v2]
   workflow_dispatch:
 
 permissions:
