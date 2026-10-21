@@ -294,176 +294,16 @@ private fun ManasApp(context:Context){
 
 // MANAS_BREATHING_V2
 "Breathe" -> {
-    var breathingActive by remember {
-        mutableStateOf(false)
-    }
-
-    var cycle by remember {
-        mutableIntStateOf(0)
-    }
-
-    val transition = rememberInfiniteTransition(
-        label = "breathing"
+    // MANAS_PHASE5_BEGINNER
+    BeginnerBreathing(
+        context = context,
+        language = language,
+        foreground = fg,
+        secondary = secondary,
+        onSaved = { completionVersion++ },
+        onBack = { page = "Home" }
     )
-
-    val animatedSize by transition.animateFloat(
-        initialValue = 150f,
-        targetValue = 250f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = 4000,
-                easing = FastOutSlowInEasing
-            ),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "breathingSize"
-    )
-
-    val circleSize = if(breathingActive) {
-        animatedSize.dp
-    } else {
-        150.dp
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = if(language=="ml")
-                "ശ്വാസത്തിലേക്ക് ശ്രദ്ധിക്കാം"
-            else "Mindful Breathing",
-            fontSize = 27.sp,
-            fontWeight = FontWeight.Bold,
-            color = fg
-        )
-
-        Spacer(Modifier.height(14.dp))
-
-        Text(
-            text = if(language=="ml")
-                "നിങ്ങളുടെ സ്വാഭാവിക താളത്തിൽ ശ്വസിക്കൂ"
-            else "Breathe at your natural pace",
-            fontSize = 15.sp,
-            color = secondary,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(Modifier.height(32.dp))
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(270.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(circleSize)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            listOf(
-                                Color(0xFFB7A8FF),
-                                Color(0xFF7864BC),
-                                Color(0xFF403478)
-                            )
-                        )
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.Air,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(46.dp)
-                )
-            }
-        }
-
-        Spacer(Modifier.height(20.dp))
-
-        Text(
-            text = if(breathingActive) {
-                if(language=="ml")
-                    "ശ്വാസം സൗമ്യമായി ശ്രദ്ധിക്കൂ"
-                else "Follow your natural breath"
-            } else {
-                if(language=="ml")
-                    "തയ്യാറാകുമ്പോൾ ആരംഭിക്കൂ"
-                else "Begin when you're ready"
-            },
-            color = fg,
-            fontSize = 19.sp,
-            fontWeight = FontWeight.Medium,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(Modifier.height(26.dp))
-
-        Button(
-            onClick = {
-                breathingActive = !breathingActive
-            },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp)
-        ) {
-            Icon(
-                if(breathingActive)
-                    Icons.Default.Pause
-                else Icons.Default.PlayArrow,
-                contentDescription = null
-            )
-
-            Spacer(Modifier.width(8.dp))
-
-            Text(
-                if(breathingActive)
-                    "Pause"
-                else "Start Breathing"
-            )
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        OutlinedButton(
-            onClick = {
-                breathingActive = false
-                cycle = 0
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Reset")
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        TextButton(
-            onClick = {
-                breathingActive = false
-                page = "Home"
-            }
-        ) {
-            Text("Back to Home")
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        Text(
-            text = if(language=="ml")
-                "അസ്വസ്ഥത തോന്നിയാൽ നിർത്തി വിശ്രമിക്കൂ."
-            else "If you feel uncomfortable, stop and rest.",
-            fontSize = 12.sp,
-            color = secondary,
-            textAlign = TextAlign.Center
-        )
-    }
 }
-
 
 "Ground" -> {
     val titles = listOf(
@@ -765,6 +605,10 @@ private fun ManasApp(context:Context){
           val moodCount=moodPrefs.getString("records", "").orEmpty().lineSequence().count { it.isNotBlank() }
           Tile { Text("Mood check-ins: $moodCount",color=fg,fontSize=20.sp) }
           Tile { Text("Meditation days recorded: ${dates.size}",color=fg,fontSize=20.sp) }
+          val breathTotal = remember(completionVersion) { prefs.getLong("breath_total_seconds", 0L) }
+          val breathCount = remember(completionVersion) { prefs.getInt("breath_session_count", 0) }
+          Tile { Text("Breathing sessions: $breathCount",color=fg,fontSize=20.sp)
+                 Text("Practice time: ${breathTotal / 60} min ${breathTotal % 60} sec",color=secondary) }
           Text("Progress is stored on this device only. Reinstalling may remove it.",color=secondary,fontSize=12.sp)
        }
        "Settings" -> LazyColumn(contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
