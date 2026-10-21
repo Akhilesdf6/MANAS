@@ -101,11 +101,14 @@ private fun ManasApp(context:Context){
    }
    Box(Modifier.weight(1f)) {
      when(page){
-       
+
 "Home" -> LazyColumn(
     contentPadding = PaddingValues(20.dp),
     verticalArrangement = Arrangement.spacedBy(18.dp)
 ) {
+    // MANAS_MOOD_CHECKIN_V1
+    item { MoodCheckIn(context) }
+
     // MANAS_QUICK_RELIEF_V3
     item {
         Column(
