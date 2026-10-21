@@ -30,12 +30,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
 
-private val Navy=Color(0xFF10142E)
-private val LightBg=Color(0xFFF6F5FC)
+private val Navy=Color(0xFF17151F)
+private val LightBg=Color(0xFFF8F7FC)
 private val LightPanel=Color(0xFFFFFFFF)
-private val Panel=Color(0xFF23264D)
-private val Lavender=Color(0xFFB7A8FF)
-private val Muted=Color(0xFFCDD0EB)
+private val Panel=Color(0xFF292433)
+private val Lavender=Color(0xFFC8B6F0)
+private val Muted=Color(0xFFB4ADBF)
 private val Gold=Color(0xFFFFD89A)
 private val FreeTitles=listOf("ശ്വാസത്തെ അറിയാം", "ശാന്തമായ തുടക്കം", "ശരീരത്തെ ശ്രദ്ധിക്കാം", "ചിന്തകളെ നിരീക്ഷിക്കാം", "നന്ദിയോടെ ഒരു നിമിഷം", "മനസ്സിന് വിശ്രമം", "ഏഴ് ദിവസത്തെ യാത്ര")
 private val Themes=listOf("ശ്വാസവും ശ്രദ്ധയും", "മനസ്സിന്റെ ശാന്തത", "ശരീരവും വിശ്രമവും", "ഏകാഗ്രത", "സ്വയം കരുതൽ", "ഉറക്കത്തിനുള്ള ശാന്തത", "ദൈനംദിന ധ്യാനം")
@@ -77,9 +77,9 @@ private fun ManasApp(context:Context){
  val dark=when(themeChoice){ "Light"->false;"Dark"->true;else->(androidx.compose.foundation.isSystemInDarkTheme()) }
  val bg=if(dark) Navy else LightBg
  val panel=if(dark) Panel else LightPanel
- val fg=if(dark) Color.White else Color(0xFF17182D)
- val secondary=if(dark) Muted else Color(0xFF4F536D)
- val accent=if(dark) Lavender else Color(0xFF5842B6)
+ val fg=if(dark) Color(0xFFF2EFF8) else Color(0xFF342B47)
+ val secondary=if(dark) Muted else Color(0xFF756D85)
+ val accent=if(dark) Lavender else Color(0xFF6D5A91)
  val gold=if(dark) Gold else Color(0xFF77520E)
  var selectedDay by remember { mutableIntStateOf(1) }
  var speaking by remember { mutableStateOf(false) }
@@ -88,15 +88,15 @@ private fun ManasApp(context:Context){
  DisposableEffect(tts){onDispose { tts.stop();tts.shutdown() }}
  val textColor=fg
  MaterialTheme(colorScheme=if(dark) darkColorScheme(primary=accent,background=bg,surface=panel,onSurface=fg,onBackground=fg) else lightColorScheme(primary=accent,background=bg,surface=panel,onSurface=fg,onBackground=fg)) {
- Column(Modifier.fillMaxSize().background(if(dark) Brush.verticalGradient(listOf(Navy,Color(0xFF1D1941),Navy)) else Brush.verticalGradient(listOf(bg,bg)))) {
+ Column(Modifier.fillMaxSize().background(if(dark) Brush.verticalGradient(listOf(bg,bg)) else Brush.verticalGradient(listOf(bg,bg)))) {
    Row(Modifier.fillMaxWidth().padding(20.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
-      Column { Text("MANAS",fontSize=28.sp,fontWeight=FontWeight.Bold,color=fg);Text("A Journey Within",fontSize=12.sp,color=secondary) }
-      Icon(Icons.Default.SelfImprovement,null,tint=Gold,modifier=Modifier.size(34.dp))
+      Column { Text("MANAS",fontSize=26.sp,fontWeight=FontWeight.SemiBold,color=fg);Text("A Journey Within",fontSize=12.sp,color=secondary) }
+      Icon(Icons.Default.SelfImprovement,null,tint=accent,modifier=Modifier.size(30.dp))
    }
    Box(Modifier.weight(1f)) {
      when(page){
-       "Home" -> LazyColumn(contentPadding=PaddingValues(horizontal=18.dp,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
-          item { Text(if(language=="ml") "മനസ്സിന് ഒരു ശാന്ത നിമിഷം 🌿" else "A peaceful moment 🌿",fontSize=23.sp,fontWeight=FontWeight.Bold,color=textColor) }
+       "Home" -> LazyColumn(contentPadding=PaddingValues(horizontal=18.dp,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(22.dp)){
+          item { Text(if(language=="ml") "മനസ്സിന് ഒരു ശാന്ത നിമിഷം 🌿" else "A peaceful moment 🌿",fontSize=23.sp,fontWeight=FontWeight.SemiBold,color=textColor) }
           item { Tile {
             Text("QUICK RELIEF",color=gold,fontWeight=FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
@@ -196,7 +196,7 @@ private fun ManasApp(context:Context){
  }
  }
 }
-@Composable private fun Tile(content:@Composable ColumnScope.()->Unit){Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(20.dp)).padding(18.dp),content=content)}
+@Composable private fun Tile(content:@Composable ColumnScope.()->Unit){Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(20.dp)).padding(20.dp),content=content)}
 
 private fun streak(dates:Set<String>, today:LocalDate):Int {
  var day=if(today.toString() in dates) today else today.minusDays(1)
