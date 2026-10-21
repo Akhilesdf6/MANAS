@@ -2,9 +2,9 @@ name: MANAS Android Auto Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, redesign/manas-2-premium]
   pull_request:
-    branches: [main]
+    branches: [main, redesign/manas-2-premium]
   workflow_dispatch:
 
 permissions:
