@@ -8,7 +8,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
-import android.speech.tts.TextToSpeech
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.*
@@ -33,7 +32,6 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 
-import java.util.Locale
 
 private val Navy=Color(0xFF10142E)
 private val LightBg=Color(0xFFF6F5FC)
@@ -42,10 +40,6 @@ private val Panel=Color(0xFF23264D)
 private val Lavender=Color(0xFFB7A8FF)
 private val Muted=Color(0xFFCDD0EB)
 private val Gold=Color(0xFFFFD89A)
-private val FreeTitles=listOf("ശ്വാസത്തെ അറിയാം", "ശാന്തമായ തുടക്കം", "ശരീരത്തെ ശ്രദ്ധിക്കാം", "ചിന്തകളെ നിരീക്ഷിക്കാം", "നന്ദിയോടെ ഒരു നിമിഷം", "മനസ്സിന് വിശ്രമം", "ഏഴ് ദിവസത്തെ യാത്ര")
-private val Themes=listOf("ശ്വാസവും ശ്രദ്ധയും", "മനസ്സിന്റെ ശാന്തത", "ശരീരവും വിശ്രമവും", "ഏകാഗ്രത", "സ്വയം കരുതൽ", "ഉറക്കത്തിനുള്ള ശാന്തത", "ദൈനംദിന ധ്യാനം")
-private fun title(day:Int)=if(day<=7) FreeTitles[day-1] else Themes[((day-8)/12).coerceAtMost(6)]
-private fun guidance(day:Int)="നമസ്കാരം. മനസ് ധ്യാനത്തിലേക്ക് സ്വാഗതം. സുഖമായി ഇരിക്കുക. കണ്ണുകൾ അടയ്ക്കാൻ താൽപര്യമുണ്ടെങ്കിൽ അടയ്ക്കാം. ശ്വാസം സ്വാഭാവികമായി അകത്തേക്കും പുറത്തേക്കും പോകുന്നത് ശ്രദ്ധിക്കുക. ശ്രദ്ധ മാറിയാൽ സൗമ്യമായി ശ്വാസത്തിലേക്ക് തിരികെ വരിക. ഈ നിമിഷത്തിൽ ശാന്തമായി തുടരുക. ഇന്നത്തെ പരിശീലനം ഇവിടെ അവസാനിക്കുന്നു. നന്ദി."
 
 class MainActivity:ComponentActivity(){
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent { ManasApp(this) }}
@@ -54,12 +48,11 @@ class MainActivity:ComponentActivity(){
 @Composable
 private fun ManasApp(context:Context){
  val prefs=remember { context.getSharedPreferences("manas_progress",Context.MODE_PRIVATE) }
- val completed=remember { mutableStateListOf<Int>().apply { addAll((1..90).filter { prefs.getBoolean("done_$it",false) }) } }
+ // MANAS_PHASE4_CLEANUP
  // MANAS_V11_PATCH
  // MANAS_V12_QUICK_RELIEF
  var page by remember { mutableStateOf("Home") }
  var language by remember { mutableStateOf(prefs.getString("language", "ml") ?: "ml") }
- var voiceChoice by remember { mutableStateOf(prefs.getString("voice", "female") ?: "female") }
  var quickRelief by remember { mutableStateOf(false) }
    var reliefIndex by remember { mutableIntStateOf(0) }
  var themeChoice by remember { mutableStateOf(prefs.getString("theme", "System") ?: "System") }
@@ -87,11 +80,6 @@ private fun ManasApp(context:Context){
  val secondary=if(dark) Muted else Color(0xFF4F536D)
  val accent=if(dark) Lavender else Color(0xFF5842B6)
  val gold=if(dark) Gold else Color(0xFF77520E)
- var selectedDay by remember { mutableIntStateOf(1) }
- var speaking by remember { mutableStateOf(false) }
- var ttsReady by remember { mutableStateOf(false) }
- val tts=remember { TextToSpeech(context) { status -> ttsReady=status==TextToSpeech.SUCCESS } }
- DisposableEffect(tts){onDispose { tts.stop();tts.shutdown() }}
  val textColor=fg
  MaterialTheme(colorScheme=if(dark) darkColorScheme(primary=accent,background=bg,surface=panel,onSurface=fg,onBackground=fg) else lightColorScheme(primary=accent,background=bg,surface=panel,onSurface=fg,onBackground=fg)) {
  Column(Modifier.fillMaxSize().background(if(dark) Brush.verticalGradient(listOf(Navy,Color(0xFF1D1941),Navy)) else Brush.verticalGradient(listOf(bg,bg)))) {
@@ -761,33 +749,22 @@ private fun ManasApp(context:Context){
     }
 }
 
-"Journey" -> LazyColumn(contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
-          item { Text("90-Day Meditation Journey",fontSize=22.sp,fontWeight=FontWeight.Bold,color=fg);Text("Day 1–7 Free · Day 8–90 Premium",color=secondary) }
-          items((1..90).toList()){day->
-            Tile { Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.fillMaxWidth()){
-              Column(Modifier.weight(1f)) {Text("Day $day · ${title(day)}",color=fg,fontWeight=FontWeight.Medium);Text(if(day<=7) "FREE · 5 min" else "PREMIUM · 10 min",color=if(day<=7) Color(0xFFA2E6C7) else Gold,fontSize=12.sp)}
-              if(day in completed) Icon(Icons.Default.CheckCircle,null,tint=Color(0xFFA2E6C7)) else if(day>7) Icon(Icons.Default.Lock,null,tint=Gold) else IconButton(onClick={selectedDay=day;quickRelief=false;page="Player"}){Icon(Icons.Default.PlayArrow,"Play",tint=Lavender)}
-            }}
-          }
+"Player" -> Column(Modifier.fillMaxSize().padding(24.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center) {
+          Icon(Icons.Default.SelfImprovement, "Meditation", modifier=Modifier.size(88.dp),tint=accent)
+          Spacer(Modifier.height(20.dp))
+          Text(if(language=="ml") "സൗമ്യമായ ഇടവേള" else "A Gentle Pause",fontSize=26.sp,fontWeight=FontWeight.Bold,color=fg,textAlign=TextAlign.Center)
+          Spacer(Modifier.height(16.dp))
+          Text(if(language=="ml") "സുഖമായി ഇരിക്കൂ. ചുറ്റുമുള്ള വസ്തുക്കൾ ശ്രദ്ധിക്കൂ. ശ്വാസം സ്വാഭാവികമായി തുടരട്ടെ. ആവശ്യമെങ്കിൽ ഇടവേള എടുക്കാം." else "Sit comfortably. Notice what is around you. Let your breathing stay natural. Take a break whenever you need.",color=secondary,textAlign=TextAlign.Center)
+          Spacer(Modifier.height(24.dp))
+          Button(onClick={page="Home"}) { Text(if(language=="ml") "പൂർത്തിയായി" else "Done") }
        }
-       "Player" -> Column(Modifier.fillMaxSize().padding(24.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
-           Icon(Icons.Default.SelfImprovement,null,modifier=Modifier.size(110.dp),tint=Lavender)
-           Spacer(Modifier.height(20.dp));Text(if(quickRelief) "QUICK RELIEF" else "Day $selectedDay",color=gold);Text(if(quickRelief) (if(language=="ml") "സൗമ്യമായ ആശ്വാസം" else "Gentle Grounding") else title(selectedDay),fontSize=25.sp,color=fg,textAlign=TextAlign.Center)
-           Spacer(Modifier.height(14.dp));Text("${if(language=="ml") "Malayalam" else "English"} · Device TTS preview · ${voiceChoice.replaceFirstChar { it.uppercase() }} preference",color=secondary,textAlign=TextAlign.Center,fontSize=12.sp)
-           Spacer(Modifier.height(22.dp));Button(enabled=ttsReady,onClick={if(speaking){tts.stop();speaking=false}else{tts.language=Locale.forLanguageTag(if(language=="ml") "ml-IN" else "en-US");tts.speak(if(quickRelief) (if(language=="ml") "നിങ്ങൾ ഇപ്പോൾ സുരക്ഷിതമായ ഒരു സ്ഥലത്താണെങ്കിൽ, ചുറ്റുമുള്ള മൂന്ന് വസ്തുക്കളെ ശ്രദ്ധിക്കുക. കാലുകൾ നിലത്ത് സ്പർശിക്കുന്നത് അനുഭവിക്കുക. ശ്വാസം സ്വാഭാവികമായി തുടരട്ടെ. നിങ്ങൾക്ക് ആവശ്യമെങ്കിൽ ഇടവേള എടുക്കാം." else "If you are somewhere safe, notice three things around you. Feel your feet on the ground. Let your breathing stay natural. You can pause whenever you wish.") else if(language=="ml") guidance(selectedDay) else "Welcome to MANAS. Sit comfortably. Notice your natural breathing. If your attention wanders, gently return to the present moment. Thank you for practicing today.",TextToSpeech.QUEUE_FLUSH,null,"manas-session");speaking=true}}){Icon(if(speaking) Icons.Default.Stop else Icons.Default.PlayArrow,null);Text(if(speaking) "Stop guidance" else "Play guidance")}
-           Spacer(Modifier.height(10.dp));Text("Malayalam voice availability depends on installed TTS engine.",color=secondary,fontSize=12.sp,textAlign=TextAlign.Center)
-           if(!quickRelief) { Spacer(Modifier.height(20.dp));Button(onClick={if(selectedDay<=7){if(selectedDay !in completed)completed.add(selectedDay)
-             val newDates=prefs.getStringSet("meditation_dates", emptySet())!!.toMutableSet()
-             newDates.add(LocalDate.now().toString())
-             prefs.edit().putBoolean("done_$selectedDay",true).putStringSet("meditation_dates",newDates).apply()
-             completionVersion++
-             page="Progress"}else page="Premium"}) {Text(if(selectedDay<=7) "Mark Session Complete" else "Premium Required")} }
-       }
-       "Progress" -> Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(18.dp)){
+       "Progress" -> Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
           Text("My Progress",fontSize=25.sp,color=fg,fontWeight=FontWeight.Bold)
-          Tile { Text("🔥 $currentStreak day streak",color=fg,fontSize=22.sp); Text("Longest streak: $longestStreak days",color=secondary) }
-          Tile {Text("${completed.size} sessions completed",fontSize=23.sp,color=fg);Spacer(Modifier.height(12.dp));LinearProgressIndicator(progress={completed.size/90f},modifier=Modifier.fillMaxWidth())}
-          Tile {Text("Free journey: ${completed.count{it<=7}} / 7",color=fg);Text("Premium journey: locked in preview",color=secondary)}
+          Tile { Text("$currentStreak day current streak",color=fg,fontSize=22.sp); Text("Longest streak: $longestStreak days",color=secondary) }
+          val moodPrefs=context.getSharedPreferences("manas_mood_history",Context.MODE_PRIVATE)
+          val moodCount=moodPrefs.getString("records", "").orEmpty().lineSequence().count { it.isNotBlank() }
+          Tile { Text("Mood check-ins: $moodCount",color=fg,fontSize=20.sp) }
+          Tile { Text("Meditation days recorded: ${dates.size}",color=fg,fontSize=20.sp) }
           Text("Progress is stored on this device only. Reinstalling may remove it.",color=secondary,fontSize=12.sp)
        }
        "Settings" -> LazyColumn(contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
@@ -801,17 +778,6 @@ private fun ManasApp(context:Context){
              }
            }
          } }
-         item { Tile {
-           Text("Guidance voice preference",color=fg,fontWeight=FontWeight.Bold)
-           listOf("female" to "Female", "male" to "Male").forEach { (code,label) ->
-             Row(verticalAlignment=Alignment.CenterVertically) {
-               RadioButton(selected=voiceChoice==code,onClick={voiceChoice=code;prefs.edit().putString("voice",code).apply()})
-               Text(label,color=fg)
-             }
-           }
-           Text("Voice preference will apply to future ElevenLabs audio. Device TTS may use its default voice.",color=secondary,fontSize=12.sp)
-         } }
-         item { Tile { Text("Premium",color=fg,fontWeight=FontWeight.Bold);Text("Coming Soon",color=secondary) } }
          item { Tile {
            Text("Appearance",color=fg,fontWeight=FontWeight.Bold)
            listOf("System","Light","Dark").forEach { choice ->
@@ -828,17 +794,12 @@ private fun ManasApp(context:Context){
            Text("Reminders may arrive slightly later due to Android battery optimization.",color=secondary,fontSize=12.sp)
          } }
          item { Tile { Text("Your progress",color=fg,fontWeight=FontWeight.Bold); Text("Current streak: $currentStreak days",color=secondary);Text("Longest streak: $longestStreak days",color=secondary) } }
-         item { Text("MANAS v1.2 · Progress stored on this device",color=secondary,fontSize=12.sp) }
-       }
-       "Premium" -> Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(18.dp)){
-          Icon(Icons.Default.WorkspacePremium,null,tint=Gold,modifier=Modifier.size(60.dp));Text("MANAS PREMIUM",fontSize=27.sp,fontWeight=FontWeight.Bold,color=fg)
-          Tile {Text("₹199 / 12 months",fontSize=27.sp,color=gold,fontWeight=FontWeight.Bold);Text("90-day guided Malayalam meditation curriculum",color=fg);Text("No automatic renewal — planned pricing",color=secondary);Spacer(Modifier.height(12.dp));Button(onClick={}) {Text("Payments coming later")}}
-          Text("This build does not accept payments or unlock paid content. Billing must be implemented and verified before release.",color=secondary,fontSize=13.sp)
+         item { Text("MANAS · Progress stored on this device",color=secondary,fontSize=12.sp) }
        }
      }
    }
    NavigationBar(containerColor=panel){
-      listOf(Triple("Home",Icons.Default.Home,"Home"),Triple("Progress",Icons.Default.BarChart,"Progress"),Triple("Settings",Icons.Default.Settings,"Settings")).forEach { (name,icon,label)->NavigationBarItem(selected=page==name,onClick={tts.stop();speaking=false;page=name},icon={Icon(icon,label)},label={Text(label)},colors=NavigationBarItemDefaults.colors(selectedIconColor=accent,selectedTextColor=accent,unselectedIconColor=secondary,unselectedTextColor=secondary)) }
+      listOf(Triple("Home",Icons.Default.Home,"Home"),Triple("Progress",Icons.Default.BarChart,"Progress"),Triple("Settings",Icons.Default.Settings,"Settings")).forEach { (name,icon,label)->NavigationBarItem(selected=page==name,onClick={page=name},icon={Icon(icon,label)},label={Text(label)},colors=NavigationBarItemDefaults.colors(selectedIconColor=accent,selectedTextColor=accent,unselectedIconColor=secondary,unselectedTextColor=secondary)) }
    }
  }
  }
