@@ -1,0 +1,204 @@
+package com.manas.meditation
+
+import android.content.Context
+import android.os.SystemClock
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+import java.time.LocalDate
+
+@Composable
+fun MeditationTimer(
+    context: Context,
+    language: String,
+    onBack: () -> Unit
+) {
+    val prefs = remember {
+        context.getSharedPreferences(
+            "manas_progress",
+            Context.MODE_PRIVATE
+        )
+    }
+
+    var minutes by remember { mutableIntStateOf(3) }
+    var elapsed by remember { mutableLongStateOf(0L) }
+    var running by remember { mutableStateOf(false) }
+    var completed by remember { mutableStateOf(false) }
+
+    val total = minutes * 60_000L
+    val remaining = ((total - elapsed).coerceAtLeast(0L) + 999L) / 1000L
+    val ml = language == "ml"
+
+    LaunchedEffect(running, minutes) {
+        if (running) {
+            var previous = SystemClock.elapsedRealtime()
+
+            while (running && elapsed < total) {
+                delay(100L)
+                val now = SystemClock.elapsedRealtime()
+                elapsed = (elapsed + now - previous).coerceAtMost(total)
+                previous = now
+            }
+
+            if (running && elapsed >= total && !completed) {
+                running = false
+                completed = true
+
+                val sessions = prefs.getInt("meditation_sessions", 0)
+                val totalMinutes = prefs.getLong(
+                    "meditation_total_minutes", 0L
+                )
+
+                val dates = prefs.getStringSet(
+                    "meditation_dates", emptySet()
+                ).orEmpty().toMutableSet()
+
+                dates.add(LocalDate.now().toString())
+
+                prefs.edit()
+                    .putInt("meditation_sessions", sessions + 1)
+                    .putLong(
+                        "meditation_total_minutes",
+                        totalMinutes + minutes
+                    )
+                    .putStringSet("meditation_dates", dates)
+                    .apply()
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            if (ml) "ധ്യാനം" else "Mindful Meditation",
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        Text(
+            if (ml) "നിങ്ങൾക്ക് സൗകര്യപ്രദമായ സമയം തിരഞ്ഞെടുക്കൂ"
+            else "Choose a comfortable duration",
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(Modifier.height(20.dp))
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            listOf(2, 3, 5, 10).forEach { option ->
+                FilterChip(
+                    selected = minutes == option,
+                    onClick = {
+                        if (!running) {
+                            minutes = option
+                            elapsed = 0L
+                            completed = false
+                        }
+                    },
+                    enabled = !running,
+                    label = { Text("${option}m") }
+                )
+            }
+        }
+
+        Spacer(Modifier.height(32.dp))
+
+        Text(
+            "%02d:%02d".format(
+                remaining / 60,
+                remaining % 60
+            ),
+            fontSize = 54.sp,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        LinearProgressIndicator(
+            progress = {
+                (elapsed.toFloat() / total.toFloat())
+                    .coerceIn(0f, 1f)
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.height(28.dp))
+
+        Text(
+            when {
+                completed ->
+                    if (ml) "ധ്യാനം പൂർത്തിയായി"
+                    else "Session completed"
+
+                running ->
+                    if (ml) "ശ്വാസം സ്വാഭാവികമായി തുടരട്ടെ"
+                    else "Let your breathing stay natural"
+
+                else ->
+                    if (ml) "സുഖമായി ഇരിക്കൂ. തയ്യാറാകുമ്പോൾ ആരംഭിക്കൂ."
+                    else "Sit comfortably. Begin when ready."
+            },
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(Modifier.height(32.dp))
+
+        Button(
+            onClick = {
+                if (completed) {
+                    elapsed = 0L
+                    completed = false
+                }
+                running = !running
+            },
+            enabled = !completed || !running,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                when {
+                    completed -> "Start Again"
+                    running -> "Pause"
+                    elapsed > 0L -> "Resume"
+                    else -> "Start Meditation"
+                }
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        OutlinedButton(
+            onClick = {
+                running = false
+                elapsed = 0L
+                completed = false
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Restart")
+        }
+
+        TextButton(
+            onClick = {
+                running = false
+                onBack()
+            }
+        ) {
+            Text("Back to Home")
+        }
+    }
+}
