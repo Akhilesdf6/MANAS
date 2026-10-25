@@ -94,6 +94,25 @@ private fun ManasApp(context:Context){
     contentPadding = PaddingValues(20.dp),
     verticalArrangement = Arrangement.spacedBy(18.dp)
 ) {
+    item {
+        Column {
+            Text(
+                if(language=="ml") "സ്വാഗതം"
+                else "Welcome back",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                color = fg
+            )
+            Text(
+                if(language=="ml")
+                    "നിങ്ങൾക്കായി ഒരു ശാന്ത നിമിഷം"
+                else "A peaceful moment, just for you",
+                fontSize = 15.sp,
+                color = secondary
+            )
+        }
+    }
+
     // MANAS_MOOD_CHECKIN_V1
     item { MoodCheckIn(context) }
 
@@ -160,24 +179,7 @@ private fun ManasApp(context:Context){
     }
 
 
-    item {
-        Column {
-            Text(
-                if(language=="ml") "സ്വാഗതം"
-                else "Welcome back",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = fg
-            )
-            Text(
-                if(language=="ml")
-                    "നിങ്ങൾക്കായി ഒരു ശാന്ത നിമിഷം"
-                else "A peaceful moment, just for you",
-                fontSize = 15.sp,
-                color = secondary
-            )
-        }
-    }
+
 
     item {
         Column(
@@ -589,28 +591,19 @@ private fun ManasApp(context:Context){
     }
 }
 
-"Player" -> Column(Modifier.fillMaxSize().padding(24.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center) {
-          Icon(Icons.Default.SelfImprovement, "Meditation", modifier=Modifier.size(88.dp),tint=accent)
-          Spacer(Modifier.height(20.dp))
-          Text(if(language=="ml") "സൗമ്യമായ ഇടവേള" else "A Gentle Pause",fontSize=26.sp,fontWeight=FontWeight.Bold,color=fg,textAlign=TextAlign.Center)
-          Spacer(Modifier.height(16.dp))
-          Text(if(language=="ml") "സുഖമായി ഇരിക്കൂ. ചുറ്റുമുള്ള വസ്തുക്കൾ ശ്രദ്ധിക്കൂ. ശ്വാസം സ്വാഭാവികമായി തുടരട്ടെ. ആവശ്യമെങ്കിൽ ഇടവേള എടുക്കാം." else "Sit comfortably. Notice what is around you. Let your breathing stay natural. Take a break whenever you need.",color=secondary,textAlign=TextAlign.Center)
-          Spacer(Modifier.height(24.dp))
-          Button(onClick={page="Home"}) { Text(if(language=="ml") "പൂർത്തിയായി" else "Done") }
-       }
-       "Progress" -> Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
-          Text("My Progress",fontSize=25.sp,color=fg,fontWeight=FontWeight.Bold)
-          Tile { Text("$currentStreak day current streak",color=fg,fontSize=22.sp); Text("Longest streak: $longestStreak days",color=secondary) }
-          val moodPrefs=context.getSharedPreferences("manas_mood_history",Context.MODE_PRIVATE)
-          val moodCount=moodPrefs.getString("records", "").orEmpty().lineSequence().count { it.isNotBlank() }
-          Tile { Text("Mood check-ins: $moodCount",color=fg,fontSize=20.sp) }
-          Tile { Text("Meditation days recorded: ${dates.size}",color=fg,fontSize=20.sp) }
-          val breathTotal = remember(completionVersion) { prefs.getLong("breath_total_seconds", 0L) }
-          val breathCount = remember(completionVersion) { prefs.getInt("breath_session_count", 0) }
-          Tile { Text("Breathing sessions: $breathCount",color=fg,fontSize=20.sp)
-                 Text("Practice time: ${breathTotal / 60} min ${breathTotal % 60} sec",color=secondary) }
-          Text("Progress is stored on this device only. Reinstalling may remove it.",color=secondary,fontSize=12.sp)
-       }
+"Player" -> MeditationTimer(
+    context = context,
+    language = language,
+    onBack = {
+        completionVersion++
+        page = "Home"
+    }
+)
+
+       "Progress" -> key(completionVersion, page) {
+    ProgressDashboard(context)
+}
+
        "Settings" -> LazyColumn(contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
          item { Text("Settings",fontSize=25.sp,color=fg,fontWeight=FontWeight.Bold) }
          item { Tile {
