@@ -1,0 +1,31 @@
+name: MANAS Security Scan
+
+on:
+  push:
+    branches:
+      - main
+      - redesign/manas-2-premium
+  pull_request:
+    branches:
+      - main
+      - redesign/manas-2-premium
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Scan for Secrets
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
